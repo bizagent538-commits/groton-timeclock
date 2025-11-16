@@ -55,6 +55,7 @@ export default function App() {
   const [newCommitteeChair, setNewCommitteeChair] = useState('');
   const [newCommitteePassword, setNewCommitteePassword] = useState('');
   const [currentTime, setCurrentTime] = useState(new Date());
+  const dateFormat = { year: 'numeric', month: '2-digit', day: '2-digit' };
   const [loginInput, setLoginInput] = useState('');
   const [loggedInEmployee, setLoggedInEmployee] = useState(null);
   const [showAdmin, setShowAdmin] = useState(false);
