@@ -11,7 +11,7 @@ const supabase = {
       const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=*`, {
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
       });
-      return { data: await res.json() };
+      return { data: await res.json(), error: null };
     },
     insert: async (data) => {
       const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
@@ -19,15 +19,16 @@ const supabase = {
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
         body: JSON.stringify(data)
       });
-      return { data: await res.json() };
+      return { data: await res.json(), error: null };
     },
-    update: (data) => ({
+    update: async (data) => ({
       eq: async (column, value) => {
-        await fetch(`${SUPABASE_URL}/rest/v1/${table}?${column}=eq.${value}`, {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${column}=eq.${value}`, {
           method: 'PATCH',
           headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
           body: JSON.stringify(data)
         });
+        return { data: await res.json(), error: null };
       }
     }),
     delete: () => ({
@@ -36,6 +37,7 @@ const supabase = {
           method: 'DELETE',
           headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
         });
+        return { error: null };
       }
     })
   })
@@ -58,8 +60,14 @@ export default function App() {
   const [showAdmin, setShowAdmin] = useState(false);
   const [adminPassword, setAdminPassword] = useState('');
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
+  const [showApprovals, setShowApprovals] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState({ show: false, message: '', onConfirm: null });
   const [clockOutNotes, setClockOutNotes] = useState('');
+  const [showDateRangeExport, setShowDateRangeExport] = useState(false);
+  const [exportStartDate, setExportStartDate] = useState('');
+  const [exportEndDate, setExportEndDate] = useState('');
   const [loggedInCommittee, setLoggedInCommittee] = useState(null);
+  
   const ADMIN_PASSWORD = 'jackal';
 
   const loadData = async () => {
@@ -69,11 +77,12 @@ export default function App() {
         supabase.from('committees').select(),
         supabase.from('time_entries').select()
       ]);
+      
       setEmployees(empRes.data || []);
       setCommittees(comRes.data || []);
       setTimeEntries(entRes.data || []);
     } catch (error) {
-      console.error('Error:', error);
+      console.error('Error loading data:', error);
     } finally {
       setIsLoading(false);
     }
@@ -94,6 +103,7 @@ export default function App() {
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth();
+    
     if (currentMonth >= 2) {
       return { start: new Date(currentYear, 2, 1), end: new Date(currentYear + 1, 1, 28, 23, 59, 59) };
     } else {
@@ -105,14 +115,16 @@ export default function App() {
     if (newEmployeeName.trim() && newEmployeeNumber.trim()) {
       const exists = employees.some(e => e.number === newEmployeeNumber.trim());
       if (exists) {
-        alert('Employee number exists!');
+        alert('Employee number already exists!');
         return;
       }
+      
       await supabase.from('employees').insert({
         id: Date.now(),
         name: newEmployeeName.trim(),
         number: newEmployeeNumber.trim()
       });
+      
       setNewEmployeeName('');
       setNewEmployeeNumber('');
       loadData();
@@ -127,34 +139,40 @@ export default function App() {
         chair: newCommitteeChair.trim(),
         password: newCommitteePassword.trim()
       });
+      
       setNewCommitteeName('');
       setNewCommitteeChair('');
       setNewCommitteePassword('');
       loadData();
     } else {
-      alert('Fill all fields.');
+      alert('Please fill in committee name, chair name, and password.');
     }
   };
 
   const handleFileImport = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
+
     try {
       const data = await file.arrayBuffer();
       const workbook = XLSX.read(data);
       const worksheet = workbook.Sheets[workbook.SheetNames[0]];
       const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
       const importedEmployees = [];
       let skipped = 0;
+
       for (const row of jsonData) {
-        const number = String(row['Employee Number'] || row['Number'] || '').trim();
-        let name = String(row['Employee Name'] || row['Name'] || '').trim();
+        const number = String(row['Employee Number'] || row['Number'] || row['employee_number'] || '').trim();
+        let name = String(row['Employee Name'] || row['Name'] || row['employee_name'] || '').trim();
+
         if (name.includes(',')) {
           const parts = name.split(',').map(part => part.trim());
           if (parts.length === 2) {
             name = `${parts[1]} ${parts[0]}`;
           }
         }
+
         if (number && name) {
           const exists = employees.some(e => e.number === number);
           if (!exists) {
@@ -168,10 +186,13 @@ export default function App() {
           }
         }
       }
+
       if (importedEmployees.length > 0) {
         await supabase.from('employees').insert(importedEmployees);
-        alert(`Imported ${importedEmployees.length} employees!${skipped > 0 ? ` (${skipped} skipped)` : ''}`);
+        alert(`Successfully imported ${importedEmployees.length} employees!${skipped > 0 ? ` (${skipped} duplicates skipped)` : ''}`);
         loadData();
+      } else {
+        alert('No valid employees found in file.');
       }
     } catch (error) {
       alert('Error reading file.');
@@ -183,15 +204,21 @@ export default function App() {
     if (!loginInput.trim()) return;
     const input = loginInput.trim().toLowerCase();
     const employee = employees.find(e => 
-      e.number.toLowerCase() === input || e.name.toLowerCase() === input
+      e.number.toLowerCase() === input || 
+      e.name.toLowerCase() === input
     );
     if (employee) {
       setLoggedInEmployee(employee);
       setLoginInput('');
     } else {
-      alert('Not found.');
+      alert('Employee not found.');
       setLoginInput('');
     }
+  };
+
+  const handleLogout = () => {
+    setLoggedInEmployee(null);
+    setSelectedCommittee('');
   };
 
   const handleAdminLogin = () => {
@@ -212,11 +239,89 @@ export default function App() {
     }
   };
 
+  const handleAdminLogout = () => {
+    setIsAdminAuthenticated(false);
+    setLoggedInCommittee(null);
+    setShowAdmin(false);
+  };
+
+  const deleteEmployee = (employeeId) => {
+    const employeeName = employees.find(e => e.id === employeeId)?.name;
+    setConfirmDialog({
+      show: true,
+      message: `Delete ${employeeName}?`,
+      onConfirm: async () => {
+        await supabase.from('employees').delete().eq('id', employeeId);
+        await supabase.from('time_entries').delete().eq('employee_id', employeeId);
+        setConfirmDialog({ show: false, message: '', onConfirm: null });
+        loadData();
+      }
+    });
+  };
+
+  const deleteCommittee = (committeeId) => {
+    const committeeName = committees.find(c => c.id === committeeId)?.name;
+    setConfirmDialog({
+      show: true,
+      message: `Delete ${committeeName}?`,
+      onConfirm: async () => {
+        await supabase.from('committees').delete().eq('id', committeeId);
+        await supabase.from('time_entries').delete().eq('committee_id', committeeId);
+        setConfirmDialog({ show: false, message: '', onConfirm: null });
+        loadData();
+      }
+    });
+  };
+  const resetAllData = () => {
+    setConfirmDialog({
+      show: true,
+      message: '⚠️ WARNING: Delete ALL data?',
+      onConfirm: async () => {
+        for (const emp of employees) {
+          await supabase.from('employees').delete().eq('id', emp.id);
+        }
+        for (const com of committees) {
+          await supabase.from('committees').delete().eq('id', com.id);
+        }
+        for (const entry of timeEntries) {
+          await supabase.from('time_entries').delete().eq('id', entry.id);
+        }
+        setConfirmDialog({ show: false, message: '', onConfirm: null });
+        loadData();
+      }
+    });
+  };
+
+  const approveEntry = async (entryId) => {
+    await supabase.from('time_entries').update({ status: 'approved' }).eq('id', entryId);
+    loadData();
+  };
+
+  const rejectEntry = async (entryId) => {
+    await supabase.from('time_entries').update({ status: 'rejected' }).eq('id', entryId);
+    loadData();
+  };
+
+  const approveAllForWeek = async (weekStart, weekEnd, committeeId = null) => {
+    const entriesToApprove = timeEntries.filter(entry => {
+      const entryDate = new Date(entry.clock_in);
+      const matchesWeek = entryDate >= weekStart && entryDate <= weekEnd && entry.clock_out;
+      const matchesCommittee = committeeId ? entry.committee_id === committeeId : true;
+      return matchesWeek && matchesCommittee && entry.status === 'pending';
+    });
+
+    for (const entry of entriesToApprove) {
+      await supabase.from('time_entries').update({ status: 'approved' }).eq('id', entry.id);
+    }
+    loadData();
+  };
+
   const clockIn = async () => {
     if (!loggedInEmployee || !selectedCommittee) {
-      alert('Select committee.');
+      alert('Please select a committee.');
       return;
     }
+    
     const committee = committees.find(c => c.id === parseInt(selectedCommittee));
     await supabase.from('time_entries').insert({
       id: Date.now(),
@@ -230,6 +335,7 @@ export default function App() {
       status: 'pending',
       notes: ''
     });
+    
     setTimeout(() => {
       setLoggedInEmployee(null);
       setSelectedCommittee('');
@@ -239,24 +345,27 @@ export default function App() {
 
   const clockOut = async () => {
     if (!loggedInEmployee) return;
+    
     const lastEntry = timeEntries
       .filter(e => e.employee_id === loggedInEmployee.id && !e.clock_out)
       .sort((a, b) => new Date(b.clock_in) - new Date(a.clock_in))[0];
+    
     if (lastEntry) {
       await supabase.from('time_entries').update({
         clock_out: new Date().toISOString(),
         notes: clockOutNotes.trim()
       }).eq('id', lastEntry.id);
+      
       setClockOutNotes('');
-      setLoggedInEmployee(null);
-      setSelectedCommittee('');
+      handleLogout();
       loadData();
     }
   };
 
   const calculateHours = (clockIn, clockOut) => {
     if (!clockOut) return 0;
-    return (new Date(clockOut) - new Date(clockIn)) / 3600000;
+    const diff = new Date(clockOut) - new Date(clockIn);
+    return diff / 3600000;
   };
 
   const formatHours = (hours) => {
@@ -269,9 +378,128 @@ export default function App() {
   const getEmployeeYTDHours = (employeeId) => {
     const fiscalYear = getCurrentFiscalYear();
     return timeEntries
-      .filter(e => e.employee_id === employeeId && e.clock_out && e.status === 'approved' &&
-        new Date(e.clock_in) >= fiscalYear.start && new Date(e.clock_in) <= fiscalYear.end)
+      .filter(e => e.employee_id === employeeId && 
+        e.clock_out &&
+        e.status === 'approved' &&
+        new Date(e.clock_in) >= fiscalYear.start &&
+        new Date(e.clock_in) <= fiscalYear.end)
       .reduce((total, entry) => total + calculateHours(entry.clock_in, entry.clock_out), 0);
+  };
+
+  const getWeekDates = (date) => {
+    const d = new Date(date);
+    const day = d.getDay();
+    const diff = d.getDate() - day;
+    const sunday = new Date(d.setDate(diff));
+    const saturday = new Date(sunday);
+    saturday.setDate(sunday.getDate() + 6);
+    return { start: sunday, end: saturday };
+  };
+
+  const exportWeeklyReports = () => {
+    const now = new Date();
+    const week = getWeekDates(now);
+    exportReportsByDateRange(week.start, week.end, 'Weekly');
+  };
+
+  const exportReportsByDateRange = (startDate, endDate, reportType = 'Custom') => {
+    const rangeEntries = timeEntries.filter(e => {
+      const entryDate = new Date(e.clock_in);
+      return entryDate >= startDate && entryDate <= endDate && e.clock_out;
+    });
+
+    if (rangeEntries.length === 0) {
+      alert('No entries found.');
+      return;
+    }
+
+    const wb = XLSX.utils.book_new();
+    const masterData = rangeEntries.map(entry => ({
+      'Employee Number': entry.employee_number,
+      'Employee Name': entry.employee_name,
+      'Committee': entry.committee_name,
+      'Date': new Date(entry.clock_in).toLocaleDateString(),
+      'Clock In': new Date(entry.clock_in).toLocaleTimeString(),
+      'Clock Out': new Date(entry.clock_out).toLocaleTimeString(),
+      'Hours': calculateHours(entry.clock_in, entry.clock_out).toFixed(2),
+      'Status': entry.status || 'pending',
+      'Notes': entry.notes || ''
+    }));
+    
+    const masterWs = XLSX.utils.json_to_sheet(masterData);
+    XLSX.utils.book_append_sheet(wb, masterWs, 'Master Report');
+
+    committees.forEach(committee => {
+      const committeeEntries = rangeEntries.filter(e => e.committee_id === committee.id);
+      if (committeeEntries.length > 0) {
+        const committeeData = committeeEntries.map(entry => ({
+          'Employee Number': entry.employee_number,
+          'Employee Name': entry.employee_name,
+          'Date': new Date(entry.clock_in).toLocaleDateString(),
+          'Clock In': new Date(entry.clock_in).toLocaleTimeString(),
+          'Clock Out': new Date(entry.clock_out).toLocaleTimeString(),
+          'Hours': calculateHours(entry.clock_in, entry.clock_out).toFixed(2),
+          'Status': entry.status || 'pending',
+          'Notes': entry.notes || ''
+        }));
+        
+        const committeeWs = XLSX.utils.json_to_sheet(committeeData);
+        XLSX.utils.book_append_sheet(wb, committeeWs, committee.name.substring(0, 31));
+      }
+    });
+
+    const startStr = startDate.toLocaleDateString().replace(/\//g, '-');
+    const endStr = endDate.toLocaleDateString().replace(/\//g, '-');
+    XLSX.writeFile(wb, `${reportType}-Report-${startStr}-to-${endStr}.xlsx`);
+  };
+
+  const exportCommitteeReport = (committeeId) => {
+    const committee = committees.find(c => c.id === committeeId);
+    if (!committee) return;
+    const now = new Date();
+    const week = getWeekDates(now);
+    const committeeEntries = timeEntries.filter(e => {
+      const entryDate = new Date(e.clock_in);
+      return e.committee_id === committeeId && entryDate >= week.start && entryDate <= week.end && e.clock_out;
+    });
+    if (committeeEntries.length === 0) {
+      alert('No entries found.');
+      return;
+    }
+    const wb = XLSX.utils.book_new();
+    const committeeData = committeeEntries.map(entry => ({
+      'Employee Number': entry.employee_number,
+      'Employee Name': entry.employee_name,
+      'Date': new Date(entry.clock_in).toLocaleDateString(),
+      'Clock In': new Date(entry.clock_in).toLocaleTimeString(),
+      'Clock Out': new Date(entry.clock_out).toLocaleTimeString(),
+      'Hours': calculateHours(entry.clock_in, entry.clock_out).toFixed(2),
+      'Status': entry.status || 'pending',
+      'Notes': entry.notes || ''
+    }));
+    const ws = XLSX.utils.json_to_sheet(committeeData);
+    XLSX.utils.book_append_sheet(wb, ws, committee.name);
+    const weekStart = week.start.toLocaleDateString().replace(/\//g, '-');
+    XLSX.writeFile(wb, `${committee.name}-Report-${weekStart}.xlsx`);
+  };
+
+  const handleDateRangeExport = () => {
+    if (!exportStartDate || !exportEndDate) {
+      alert('Select both dates.');
+      return;
+    }
+    const start = new Date(exportStartDate);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(exportEndDate);
+    end.setHours(23, 59, 59, 999);
+    if (start > end) {
+      alert('Start date must be before end date.');
+      return;
+    }
+    exportReportsByDateRange(start, end, 'Custom');
+    setShowDateRangeExport(false);
+    setExportStartDate('');
+    setExportEndDate('');
   };
 
   const isEmployeeClockedIn = () => {
@@ -281,260 +509,14 @@ export default function App() {
 
   const ytdHours = loggedInEmployee ? getEmployeeYTDHours(loggedInEmployee.id) : 0;
   const fiscalYear = getCurrentFiscalYear();
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
-        <Clock className="w-16 h-16 text-indigo-600 animate-pulse" />
-      </div>
-    );
-  }
-
-  if (showAdmin && !isAdminAuthenticated) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-6">
-        <div className="bg-white rounded-lg shadow-2xl p-8 w-full max-w-md">
-          <Settings className="w-16 h-16 text-indigo-600 mx-auto mb-4" />
-          <h1 className="text-3xl font-bold text-center mb-8">Admin Panel</h1>
-          <input
-            type="password"
-            value={adminPassword}
-            onChange={(e) => setAdminPassword(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleAdminLogin()}
-            placeholder="Password"
-            className="w-full px-4 py-3 border-2 rounded-lg mb-4"
-            autoFocus
-          />
-          <button onClick={handleAdminLogin} className="w-full px-6 py-3 bg-indigo-600 text-white rounded-lg mb-2">
-            Login
-          </button>
-          <button onClick={() => setShowAdmin(false)} className="w-full px-6 py-3 bg-gray-600 text-white rounded-lg">
-            Back
-          </button>
+        <div className="text-center">
+          <Clock className="w-16 h-16 text-indigo-600 mx-auto mb-4 animate-pulse" />
+          <p className="text-xl font-semibold text-gray-700">Loading...</p>
         </div>
       </div>
     );
   }
-
-  if (showAdmin) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
-        <div className="max-w-6xl mx-auto">
-          <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <Settings className="w-8 h-8 text-indigo-600" />
-                <h1 className="text-3xl font-bold">{loggedInCommittee ? `${loggedInCommittee.name} Chair` : 'Admin Panel'}</h1>
-              </div>
-              <div className="flex gap-2">
-                <button onClick={() => setShowAdmin(false)} className="px-4 py-2 bg-gray-600 text-white rounded-lg">
-                  Back
-                </button>
-                <button onClick={() => { setIsAdminAuthenticated(false); setLoggedInCommittee(null); setShowAdmin(false); }} className="px-4 py-2 bg-red-600 text-white rounded-lg">
-                  Logout
-                </button>
-              </div>
-            </div>
-
-            {!loggedInCommittee && (
-              <div className="grid md:grid-cols-2 gap-4 mb-6">
-                <div className="p-4 bg-gray-50 rounded-lg">
-                  <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                    <User className="w-5 h-5" />
-                    Add Employee
-                  </h2>
-                  <div className="space-y-2">
-                    <input
-                      type="text"
-                      value={newEmployeeNumber}
-                      onChange={(e) => setNewEmployeeNumber(e.target.value)}
-                      placeholder="Employee number"
-                      className="w-full px-4 py-2 border rounded-lg"
-                    />
-                    <input
-                      type="text"
-                      value={newEmployeeName}
-                      onChange={(e) => setNewEmployeeName(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && addEmployee()}
-                      placeholder="Employee name"
-                      className="w-full px-4 py-2 border rounded-lg"
-                    />
-                    <button onClick={addEmployee} className="w-full px-6 py-2 bg-indigo-600 text-white rounded-lg">
-                      Add Employee
-                    </button>
-                    <div className="pt-2 border-t">
-                      <label className="block w-full px-6 py-2 bg-emerald-600 text-white rounded-lg cursor-pointer text-center">
-                        <Upload className="w-4 h-4 inline mr-2" />
-                        Import CSV/Excel
-                        <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFileImport} className="hidden" />
-                      </label>
-                      <p className="text-xs text-gray-600 mt-1 text-center">Columns: "Employee Number" and "Employee Name"</p>
-                    </div>
-                  </div>
-                  <div className="mt-4">
-                    <h3 className="font-semibold mb-2">Employees ({employees.length}):</h3>
-                    <div className="space-y-1 max-h-40 overflow-y-auto">
-                      {employees.map(emp => (
-                        <div key={emp.id} className="text-sm p-2 bg-white rounded border">
-                          #{emp.number} - {emp.name}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="p-4 bg-gray-50 rounded-lg">
-                  <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                    <Building2 className="w-5 h-5" />
-                    Add Committee
-                  </h2>
-                  <div className="space-y-2">
-                    <input
-                      type="text"
-                      value={newCommitteeName}
-                      onChange={(e) => setNewCommitteeName(e.target.value)}
-                      placeholder="Committee name"
-                      className="w-full px-4 py-2 border rounded-lg"
-                    />
-                    <input
-                      type="text"
-                      value={newCommitteeChair}
-                      onChange={(e) => setNewCommitteeChair(e.target.value)}
-                      placeholder="Chair name"
-                      className="w-full px-4 py-2 border rounded-lg"
-                    />
-                    <input
-                      type="password"
-                      value={newCommitteePassword}
-                      onChange={(e) => setNewCommitteePassword(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && addCommittee()}
-                      placeholder="Chair password"
-                      className="w-full px-4 py-2 border rounded-lg"
-                    />
-                    <button onClick={addCommittee} className="w-full px-6 py-2 bg-indigo-600 text-white rounded-lg">
-                      Add Committee
-                    </button>
-                  </div>
-                  <div className="mt-4">
-                    <h3 className="font-semibold mb-2">Committees ({committees.length}):</h3>
-                    <div className="space-y-1 max-h-40 overflow-y-auto">
-                      {committees.map(com => (
-                        <div key={com.id} className="text-sm p-2 bg-white rounded border">
-                          <div className="font-semibold">{com.name}</div>
-                          <div className="text-xs text-gray-600">Chair: {com.chair}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!loggedInEmployee) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-6">
-        <div className="bg-white rounded-lg shadow-2xl p-8 w-full max-w-md">
-          <Clock className="w-16 h-16 text-indigo-600 mx-auto mb-4" />
-          <h1 className="text-3xl font-bold text-center mb-2">Groton Sportsmen's Club</h1>
-          <div className="text-2xl font-semibold text-center mb-8">{currentTime.toLocaleTimeString('en-US')}</div>
-          <div className="text-sm text-center text-gray-600 mb-8">{currentTime.toLocaleDateString('en-US')}</div>
-          <input
-            type="text"
-            value={loginInput}
-            onChange={(e) => setLoginInput(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
-            placeholder="Name or employee number"
-            className="w-full px-4 py-3 border-2 rounded-lg mb-4"
-            autoFocus
-          />
-          <button onClick={handleLogin} className="w-full px-6 py-3 bg-indigo-600 text-white rounded-lg mb-2 text-lg font-semibold">
-            <LogIn className="w-5 h-5 inline mr-2" />
-            Login
-          </button>
-          <button onClick={() => setShowAdmin(true)} className="w-full px-6 py-3 bg-gray-600 text-white rounded-lg">
-            <Settings className="w-5 h-5 inline mr-2" />
-            Admin Panel
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-6">
-      <div className="bg-white rounded-lg shadow-2xl p-8 w-full max-w-md">
-        <Clock className="w-12 h-12 text-indigo-600 mx-auto mb-3" />
-        <h2 className="text-2xl font-bold text-center mb-1">Welcome, {loggedInEmployee.name}!</h2>
-        <p className="text-center text-sm text-gray-600 mb-4">Employee #{loggedInEmployee.number}</p>
-        <div className="text-center text-xl font-semibold mb-6">{currentTime.toLocaleTimeString('en-US')}</div>
-        
-        <div className="mb-6 p-4 bg-indigo-50 rounded-lg">
-          <div className="flex justify-between items-center">
-            <span className="text-sm font-semibold flex items-center gap-2">
-              <BarChart3 className="w-4 h-4" />
-              Year to Date:
-            </span>
-            <span className="text-lg font-bold text-indigo-700">{formatHours(ytdHours)}</span>
-          </div>
-          <div className="text-xs text-indigo-600 mt-1">
-            FY: {fiscalYear.start.toLocaleDateString('en-US')} - {fiscalYear.end.toLocaleDateString('en-US')}
-          </div>
-        </div>
-
-        {!isEmployeeClockedIn() ? (
-          <div className="space-y-4">
-            <select
-              value={selectedCommittee}
-              onChange={(e) => setSelectedCommittee(e.target.value)}
-              className="w-full px-4 py-3 border-2 rounded-lg"
-            >
-              <option value="">Choose committee...</option>
-              {committees.map(com => (
-                <option key={com.id} value={com.id}>{com.name}</option>
-              ))}
-            </select>
-            <button
-              onClick={clockIn}
-              disabled={!selectedCommittee}
-              className="w-full px-6 py-4 bg-green-600 text-white rounded-lg disabled:bg-gray-300 text-lg font-semibold"
-            >
-              Clock In
-            </button>
-            <button onClick={() => setLoggedInEmployee(null)} className="w-full px-6 py-2 bg-gray-600 text-white rounded-lg">
-              Logout
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <div className="p-4 bg-green-50 rounded-lg border-2 border-green-200">
-              <p className="text-green-800 font-semibold text-center">Currently Clocked In</p>
-              <p className="text-sm text-green-700 text-center">
-                {(() => {
-                  const active = timeEntries.find(e => e.employee_id === loggedInEmployee.id && !e.clock_out);
-                  return active ? committees.find(c => c.id === active.committee_id)?.name : '';
-                })()}
-              </p>
-            </div>
-            <div>
-              <label className="block text-sm font-semibold mb-2">Notes (Optional)</label>
-              <textarea
-                value={clockOutNotes}
-                onChange={(e) => setClockOutNotes(e.target.value)}
-                placeholder="What did you work on today?"
-                className="w-full px-4 py-3 border-2 rounded-lg resize-none"
-                rows="3"
-              />
-            </div>
-            <button onClick={clockOut} className="w-full px-6 py-4 bg-red-600 text-white rounded-lg text-lg font-semibold">
-              Clock Out
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
