@@ -632,13 +632,25 @@ export default function App() {
                     </div>
                     <div className="mt-4">
                       <h3 className="font-semibold mb-2">Employees ({employees.length}):</h3>
-                      <div className="space-y-1 max-h-40 overflow-y-auto">
-                        {employees.map(emp => (
-                          <div key={emp.id} className="text-sm p-2 bg-white rounded border">
-                            #{emp.number} - {emp.name}
-                          </div>
-                        ))}
-                      </div>
+                     <div className="space-y-1 max-h-40 overflow-y-auto">
+  {employees.map(emp => (
+    <div key={emp.id} className="text-sm p-2 bg-white rounded border flex justify-between items-center">
+      <span>#{emp.number} - {emp.name}</span>
+      <button
+        onClick={async () => {
+          if (confirm(`Delete ${emp.name}? This will remove all their time entries.`)) {
+            await supabase.from('employees').delete().eq('id', emp.id);
+            await supabase.from('time_entries').delete().eq('employee_id', emp.id);
+            loadData();
+          }
+        }}
+        className="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-xs"
+      >
+        Delete
+      </button>
+    </div>
+  ))}
+</div>
                     </div>
                   </div>
 
@@ -676,14 +688,28 @@ export default function App() {
                     </div>
                     <div className="mt-4">
                       <h3 className="font-semibold mb-2">Committees ({committees.length}):</h3>
-                      <div className="space-y-1 max-h-40 overflow-y-auto">
-                        {committees.map(com => (
-                          <div key={com.id} className="text-sm p-2 bg-white rounded border">
-                            <div className="font-semibold">{com.name}</div>
-                            <div className="text-xs text-gray-600">Chair: {com.chair}</div>
-                          </div>
-                        ))}
-                      </div>
+<div className="space-y-1 max-h-40 overflow-y-auto">
+  {committees.map(com => (
+    <div key={com.id} className="text-sm p-2 bg-white rounded border flex justify-between items-center">
+      <div>
+        <div className="font-semibold">{com.name}</div>
+        <div className="text-xs text-gray-600">Chair: {com.chair}</div>
+      </div>
+      <button
+        onClick={async () => {
+          if (confirm(`Delete ${com.name}? This will remove all related time entries.`)) {
+            await supabase.from('committees').delete().eq('id', com.id);
+            await supabase.from('time_entries').delete().eq('committee_id', com.id);
+            loadData();
+          }
+        }}
+        className="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-xs"
+      >
+        Delete
+      </button>
+    </div>
+  ))}
+</div>
                     </div>
                   </div>
                 </div>
