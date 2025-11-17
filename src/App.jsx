@@ -73,6 +73,7 @@ export default function App() {
   const [editClockIn, setEditClockIn] = useState('');
   const [editClockOut, setEditClockOut] = useState('');
   const [editNotes, setEditNotes] = useState('');
+  const [selectedEntries, setSelectedEntries] = useState([]);
   const ADMIN_PASSWORD = 'jackal';
 
   const loadData = async () => {
@@ -315,6 +316,86 @@ export default function App() {
       await supabase.from('time_entries').delete().eq('id', entryId);
       loadData();
     }
+  };
+
+  const toggleEntrySelection = (entryId) => {
+    setSelectedEntries(prev => 
+      prev.includes(entryId) 
+        ? prev.filter(id => id !== entryId)
+        : [...prev, entryId]
+    );
+  };
+
+  const toggleSelectAll = (committeeEntries) => {
+    const pendingIds = committeeEntries
+      .filter(e => e.status === 'pending')
+      .map(e => e.id);
+    
+    if (pendingIds.every(id => selectedEntries.includes(id))) {
+      // Deselect all
+      setSelectedEntries(prev => prev.filter(id => !pendingIds.includes(id)));
+    } else {
+      // Select all pending
+      setSelectedEntries(prev => [...new Set([...prev, ...pendingIds])]);
+    }
+  };
+
+  const bulkApprove = async () => {
+    if (selectedEntries.length === 0) {
+      alert('No entries selected');
+      return;
+    }
+    if (confirm(`Approve ${selectedEntries.length} selected entries?`)) {
+      for (const entryId of selectedEntries) {
+        await supabase.from('time_entries').update({ status: 'approved' }).eq('id', entryId);
+      }
+      setSelectedEntries([]);
+      loadData();
+    }
+  };
+
+  const bulkReject = async () => {
+    if (selectedEntries.length === 0) {
+      alert('No entries selected');
+      return;
+    }
+    if (confirm(`Reject ${selectedEntries.length} selected entries?`)) {
+      for (const entryId of selectedEntries) {
+        await supabase.from('time_entries').update({ status: 'rejected' }).eq('id', entryId);
+      }
+      setSelectedEntries([]);
+      loadData();
+    }
+  };
+
+  const exportCommitteeReport = (committeeId) => {
+    const committee = committees.find(c => c.id === committeeId);
+    if (!committee) return;
+
+    const committeeEntries = timeEntries.filter(e => e.committee_id === committeeId && e.clock_out);
+    
+    if (committeeEntries.length === 0) {
+      alert('No completed time entries to export.');
+      return;
+    }
+
+    const wb = XLSX.utils.book_new();
+    const data = committeeEntries.map(entry => ({
+      'Employee Number': entry.employee_number,
+      'Employee Name': entry.employee_name,
+      'Date': new Date(entry.clock_in).toLocaleDateString('en-US'),
+      'Clock In': new Date(entry.clock_in).toLocaleTimeString('en-US'),
+      'Clock Out': new Date(entry.clock_out).toLocaleTimeString('en-US'),
+      'Hours': calculateHours(entry.clock_in, entry.clock_out).toFixed(2),
+      'Status': entry.status || 'pending',
+      'Notes': entry.notes || ''
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    XLSX.utils.book_append_sheet(wb, ws, 'Time Entries');
+    
+    const today = new Date().toLocaleDateString('en-US').replace(/\//g, '-');
+    XLSX.writeFile(wb, `${committee.name}-Report-${today}.xlsx`);
   };
 
   const approveAllForWeek = async (weekStart, weekEnd, committeeId = null) => {
@@ -651,6 +732,18 @@ export default function App() {
               </div>
             )}
 
+            {loggedInCommittee && (
+              <div className="mb-6">
+                <button 
+                  onClick={() => exportCommitteeReport(loggedInCommittee.id)} 
+                  className="w-full px-6 py-3 bg-emerald-600 text-white rounded-lg flex items-center justify-center gap-2"
+                >
+                  <Download className="w-5 h-5" />
+                  Export My Committee's Report
+                </button>
+              </div>
+            )}
+
             {!loggedInCommittee && (
               <>
                 <div className="bg-red-50 border-2 border-red-200 rounded-lg p-4 mb-6">
@@ -700,6 +793,35 @@ export default function App() {
             {(showApprovals && !loggedInCommittee) || loggedInCommittee ? (
               <div className="bg-white rounded-lg shadow-lg p-6">
                 <h2 className="text-xl font-bold mb-4">{loggedInCommittee ? 'Approve Hours for Your Committee' : 'Approve Weekly Hours'}</h2>
+                
+                {selectedEntries.length > 0 && (
+                  <div className="mb-4 p-4 bg-indigo-50 rounded-lg flex items-center justify-between">
+                    <span className="font-semibold text-indigo-900">
+                      {selectedEntries.length} entries selected
+                    </span>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={bulkApprove}
+                        className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold"
+                      >
+                        Bulk Approve
+                      </button>
+                      <button
+                        onClick={bulkReject}
+                        className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-semibold"
+                      >
+                        Bulk Reject
+                      </button>
+                      <button
+                        onClick={() => setSelectedEntries([])}
+                        className="px-4 py-2 bg-gray-400 text-white rounded-lg text-sm"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {(loggedInCommittee ? [loggedInCommittee] : committees).map(committee => {
                   const week = getWeekDates(new Date());
                   const committeeEntries = timeEntries.filter(e => {
@@ -710,7 +832,18 @@ export default function App() {
                   return (
                     <div key={committee.id} className="mb-6 p-4 bg-gray-50 rounded-lg">
                       <div className="flex items-center justify-between mb-3">
-                        <h3 className="text-lg font-semibold">{committee.name}</h3>
+                        <div className="flex items-center gap-3">
+                          {pendingCount > 0 && (
+                            <input
+                              type="checkbox"
+                              checked={committeeEntries.filter(e => e.status === 'pending').every(e => selectedEntries.includes(e.id))}
+                              onChange={() => toggleSelectAll(committeeEntries)}
+                              className="w-5 h-5 cursor-pointer"
+                              title="Select all pending"
+                            />
+                          )}
+                          <h3 className="text-lg font-semibold">{committee.name}</h3>
+                        </div>
                         {pendingCount > 0 && (
                           <button
                             onClick={async () => {
@@ -728,6 +861,7 @@ export default function App() {
                         <table className="w-full text-sm">
                           <thead>
                             <tr className="border-b">
+                              <th className="text-left py-2 px-2 w-8"></th>
                               <th className="text-left py-2 px-2">Employee</th>
                               <th className="text-left py-2 px-2">Date</th>
                               <th className="text-left py-2 px-2">Clock In</th>
@@ -741,6 +875,16 @@ export default function App() {
                           <tbody>
                             {committeeEntries.map(entry => (
                               <tr key={entry.id} className="border-b">
+                                <td className="py-2 px-2">
+                                  {entry.status === 'pending' && (
+                                    <input
+                                      type="checkbox"
+                                      checked={selectedEntries.includes(entry.id)}
+                                      onChange={() => toggleEntrySelection(entry.id)}
+                                      className="w-4 h-4 cursor-pointer"
+                                    />
+                                  )}
+                                </td>
                                 <td className="py-2 px-2">{entry.employee_name}</td>
                                 <td className="py-2 px-2">{new Date(entry.clock_in).toLocaleDateString('en-US')}</td>
                                 <td className="py-2 px-2 text-xs">{new Date(entry.clock_in).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</td>
