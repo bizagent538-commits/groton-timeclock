@@ -523,13 +523,9 @@ export default function App() {
                 <h2 className="text-xl font-bold mb-4">Approve Weekly Hours</h2>
                 {committees.map(committee => {
                   const week = getWeekDates(new Date());
-                  const committeeEntries = timeEntries.filter(e => {
-                    const entryDate = new Date(e.clock_in);
-                    return e.committee_id === committee.id && 
-                           entryDate >= week.start && 
-                           entryDate <= week.end && 
-                           e.clock_out;
-                  });
+                 const committeeEntries = timeEntries.filter(e => {
+  return e.committee_id === committee.id && e.clock_out;
+});
                   if (committeeEntries.length === 0) return null;
                   const pendingCount = committeeEntries.filter(e => e.status === 'pending').length;
                   return (
