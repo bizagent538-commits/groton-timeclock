@@ -547,10 +547,10 @@ export default function App() {
               </>
             )}
 
-            {showApprovals && !loggedInCommittee ? (
+            {(showApprovals && !loggedInCommittee) || loggedInCommittee ? (
               <div className="bg-white rounded-lg shadow-lg p-6">
-                <h2 className="text-xl font-bold mb-4">Approve Weekly Hours</h2>
-                {committees.map(committee => {
+                <h2 className="text-xl font-bold mb-4">{loggedInCommittee ? 'Approve Hours for Your Committee' : 'Approve Weekly Hours'}</h2>
+                {(loggedInCommittee ? [loggedInCommittee] : committees).map(committee => {
                   const week = getWeekDates(new Date());
                   const committeeEntries = timeEntries.filter(e => {
                     return e.committee_id === committee.id && e.clock_out;
@@ -622,6 +622,9 @@ export default function App() {
                     </div>
                   );
                 })}
+                {loggedInCommittee && timeEntries.filter(e => e.committee_id === loggedInCommittee.id && e.clock_out).length === 0 && (
+                  <p className="text-gray-500 text-center py-8">No time entries to approve yet</p>
+                )}
               </div>
             ) : !loggedInCommittee ? (
               <>
