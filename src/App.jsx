@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Clock, Download, User, Calendar, Building2, BarChart3, LogIn, Settings, Upload } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
-const SUPABASE_URL = 'https://gvfaxuzoisjjbootvcqu.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd2ZmF4dXpvaXNqamJvb3R2Y3F1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMyMzc4NjYsImV4cCI6MjA3ODgxMzg2Nn0.a9LDduCQCMfHX6L4Znnticljxi4iKE5tyzschDfS1-I';
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_KEY;
 
 const supabase = {
   from: (table) => ({
@@ -64,6 +64,10 @@ export default function App() {
   const [exportStartDate, setExportStartDate] = useState('');
   const [exportEndDate, setExportEndDate] = useState('');
   const [loggedInCommittee, setLoggedInCommittee] = useState(null);
+  const [editingEntry, setEditingEntry] = useState(null);
+  const [editClockIn, setEditClockIn] = useState('');
+  const [editClockOut, setEditClockOut] = useState('');
+  const [editNotes, setEditNotes] = useState('');
   const ADMIN_PASSWORD = 'jackal';
 
   const loadData = async () => {
@@ -224,6 +228,51 @@ export default function App() {
   const rejectEntry = async (entryId) => {
     await supabase.from('time_entries').update({ status: 'rejected' }).eq('id', entryId);
     loadData();
+  };
+
+  const startEditEntry = (entry) => {
+    setEditingEntry(entry);
+    setEditClockIn(new Date(entry.clock_in).toISOString().slice(0, 16));
+    setEditClockOut(entry.clock_out ? new Date(entry.clock_out).toISOString().slice(0, 16) : '');
+    setEditNotes(entry.notes || '');
+  };
+
+  const cancelEdit = () => {
+    setEditingEntry(null);
+    setEditClockIn('');
+    setEditClockOut('');
+    setEditNotes('');
+  };
+
+  const saveEdit = async () => {
+    if (!editClockIn) {
+      alert('Clock in time is required');
+      return;
+    }
+    
+    const clockInDate = new Date(editClockIn);
+    const clockOutDate = editClockOut ? new Date(editClockOut) : null;
+    
+    if (clockOutDate && clockOutDate <= clockInDate) {
+      alert('Clock out time must be after clock in time');
+      return;
+    }
+
+    await supabase.from('time_entries').update({
+      clock_in: clockInDate.toISOString(),
+      clock_out: clockOutDate ? clockOutDate.toISOString() : null,
+      notes: editNotes.trim()
+    }).eq('id', editingEntry.id);
+    
+    cancelEdit();
+    loadData();
+  };
+
+  const deleteEntry = async (entryId) => {
+    if (confirm('Are you sure you want to delete this time entry? This cannot be undone.')) {
+      await supabase.from('time_entries').delete().eq('id', entryId);
+      loadData();
+    }
   };
 
   const approveAllForWeek = async (weekStart, weekEnd, committeeId = null) => {
@@ -425,6 +474,65 @@ export default function App() {
   if (showAdmin) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
+        {editingEntry && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 max-w-md mx-4 w-full">
+              <h3 className="text-xl font-bold mb-4">Edit Time Entry</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold mb-2">Employee</label>
+                  <p className="px-4 py-2 bg-gray-100 rounded-lg">{editingEntry.employee_name}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold mb-2">Committee</label>
+                  <p className="px-4 py-2 bg-gray-100 rounded-lg">{editingEntry.committee_name}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold mb-2">Clock In *</label>
+                  <input
+                    type="datetime-local"
+                    value={editClockIn}
+                    onChange={(e) => setEditClockIn(e.target.value)}
+                    className="w-full px-4 py-2 border rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold mb-2">Clock Out</label>
+                  <input
+                    type="datetime-local"
+                    value={editClockOut}
+                    onChange={(e) => setEditClockOut(e.target.value)}
+                    className="w-full px-4 py-2 border rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold mb-2">Notes</label>
+                  <textarea
+                    value={editNotes}
+                    onChange={(e) => setEditNotes(e.target.value)}
+                    className="w-full px-4 py-2 border rounded-lg resize-none"
+                    rows="3"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2 justify-end mt-6">
+                <button
+                  onClick={cancelEdit}
+                  className="px-4 py-2 bg-gray-300 rounded-lg"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={saveEdit}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {showDateRangeExport && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg p-6 max-w-md mx-4 w-full">
@@ -580,10 +688,12 @@ export default function App() {
                             <tr className="border-b">
                               <th className="text-left py-2 px-2">Employee</th>
                               <th className="text-left py-2 px-2">Date</th>
+                              <th className="text-left py-2 px-2">Clock In</th>
+                              <th className="text-left py-2 px-2">Clock Out</th>
                               <th className="text-left py-2 px-2">Hours</th>
                               <th className="text-left py-2 px-2">Notes</th>
                               <th className="text-left py-2 px-2">Status</th>
-                              <th className="text-left py-2 px-2">Action</th>
+                              <th className="text-left py-2 px-2">Actions</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -591,6 +701,8 @@ export default function App() {
                               <tr key={entry.id} className="border-b">
                                 <td className="py-2 px-2">{entry.employee_name}</td>
                                 <td className="py-2 px-2">{new Date(entry.clock_in).toLocaleDateString('en-US')}</td>
+                                <td className="py-2 px-2 text-xs">{new Date(entry.clock_in).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</td>
+                                <td className="py-2 px-2 text-xs">{entry.clock_out ? new Date(entry.clock_out).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '-'}</td>
                                 <td className="py-2 px-2 font-semibold">{formatHours(calculateHours(entry.clock_in, entry.clock_out))}</td>
                                 <td className="py-2 px-2 text-xs max-w-xs truncate">{entry.notes || '-'}</td>
                                 <td className="py-2 px-2">
@@ -603,16 +715,24 @@ export default function App() {
                                   </span>
                                 </td>
                                 <td className="py-2 px-2">
-                                  {entry.status === 'pending' && (
-                                    <div className="flex gap-1">
-                                      <button onClick={() => approveEntry(entry.id)} className="px-3 py-1 bg-green-600 text-white rounded text-xs">
-                                        Approve
-                                      </button>
-                                      <button onClick={() => rejectEntry(entry.id)} className="px-3 py-1 bg-red-600 text-white rounded text-xs">
-                                        Reject
-                                      </button>
-                                    </div>
-                                  )}
+                                  <div className="flex gap-1 flex-wrap">
+                                    {entry.status === 'pending' && (
+                                      <>
+                                        <button onClick={() => approveEntry(entry.id)} className="px-2 py-1 bg-green-600 text-white rounded text-xs">
+                                          Approve
+                                        </button>
+                                        <button onClick={() => rejectEntry(entry.id)} className="px-2 py-1 bg-red-600 text-white rounded text-xs">
+                                          Reject
+                                        </button>
+                                      </>
+                                    )}
+                                    <button onClick={() => startEditEntry(entry)} className="px-2 py-1 bg-blue-600 text-white rounded text-xs">
+                                      Edit
+                                    </button>
+                                    <button onClick={() => deleteEntry(entry.id)} className="px-2 py-1 bg-gray-600 text-white rounded text-xs">
+                                      Delete
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             ))}
