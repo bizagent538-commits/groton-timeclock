@@ -536,6 +536,44 @@ export default function App() {
     XLSX.writeFile(wb, `${committee.name}-Report-${startStr}-to-${endStr}.xlsx`);
   };
 
+  const getCurrentMonthDates = () => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    return { start, end };
+  };
+
+  const getCurrentQuarterDates = () => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    
+    // Determine which quarter we're in (Jan-Mar, Apr-Jun, Jul-Sep, Oct-Dec)
+    const quarterStartMonth = Math.floor(currentMonth / 3) * 3;
+    const start = new Date(currentYear, quarterStartMonth, 1);
+    const end = new Date(currentYear, quarterStartMonth + 3, 0, 23, 59, 59);
+    
+    return { start, end };
+  };
+
+  const exportMonthlyReport = () => {
+    const { start, end } = getCurrentMonthDates();
+    if (loggedInCommittee) {
+      exportCommitteeReportByDateRange(loggedInCommittee.id, start, end);
+    } else {
+      exportReportsByDateRange(start, end, 'Monthly');
+    }
+  };
+
+  const exportQuarterlyReport = () => {
+    const { start, end } = getCurrentQuarterDates();
+    if (loggedInCommittee) {
+      exportCommitteeReportByDateRange(loggedInCommittee.id, start, end);
+    } else {
+      exportReportsByDateRange(start, end, 'Quarterly');
+    }
+  };
+
   const clockIn = async () => {
     if (!loggedInEmployee || !selectedCommittee) {
       alert('Select committee.');
@@ -770,6 +808,14 @@ export default function App() {
                   <Download className="w-5 h-5" />
                   Export Current Week Reports
                 </button>
+                <button onClick={exportMonthlyReport} className="w-full px-6 py-3 bg-teal-600 text-white rounded-lg flex items-center justify-center gap-2">
+                  <Download className="w-5 h-5" />
+                  Export Current Month Reports
+                </button>
+                <button onClick={exportQuarterlyReport} className="w-full px-6 py-3 bg-cyan-600 text-white rounded-lg flex items-center justify-center gap-2">
+                  <Download className="w-5 h-5" />
+                  Export Current Quarter Reports
+                </button>
                 <button onClick={() => setShowDateRangeExport(true)} className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg flex items-center justify-center gap-2">
                   <Calendar className="w-5 h-5" />
                   Export by Date Range
@@ -785,6 +831,20 @@ export default function App() {
                 >
                   <Download className="w-5 h-5" />
                   Export All Time Entries
+                </button>
+                <button 
+                  onClick={exportMonthlyReport} 
+                  className="w-full px-6 py-3 bg-teal-600 text-white rounded-lg flex items-center justify-center gap-2"
+                >
+                  <Download className="w-5 h-5" />
+                  Export Current Month
+                </button>
+                <button 
+                  onClick={exportQuarterlyReport} 
+                  className="w-full px-6 py-3 bg-cyan-600 text-white rounded-lg flex items-center justify-center gap-2"
+                >
+                  <Download className="w-5 h-5" />
+                  Export Current Quarter
                 </button>
                 <button 
                   onClick={() => setShowDateRangeExport(true)} 
