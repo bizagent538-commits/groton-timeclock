@@ -2,8 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Clock, Download, User, Calendar, Building2, BarChart3, LogIn, Settings, Upload } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_KEY;
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://gvfaxuzoisjjbootvcqu.supabase.co';
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd2ZmF4dXpvaXNqamJvb3R2Y3F1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMyMzc4NjYsImV4cCI6MjA3ODgxMzg2Nn0.a9LDduCQCMfHX6L4Znnticljxi4iKE5tyzschDfS1-I';
+
+// Debug: Check if environment variables are loaded
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+  console.error('Missing environment variables!', { SUPABASE_URL, SUPABASE_KEY });
+}
 
 const supabase = {
   from: (table) => ({
@@ -152,6 +157,13 @@ export default function App() {
       const workbook = XLSX.read(data);
       const worksheet = workbook.Sheets[workbook.SheetNames[0]];
       const jsonData = XLSX.utils.sheet_to_json(worksheet);
+      
+      if (jsonData.length === 0) {
+        alert('No data found in the file. Please check the file format.');
+        event.target.value = '';
+        return;
+      }
+      
       const importedEmployees = [];
       let skipped = 0;
       for (const row of jsonData) {
@@ -180,9 +192,14 @@ export default function App() {
         await supabase.from('employees').insert(importedEmployees);
         alert(`Imported ${importedEmployees.length} employees!${skipped > 0 ? ` (${skipped} skipped)` : ''}`);
         loadData();
+      } else if (skipped > 0) {
+        alert(`All ${skipped} employees already exist in the system.`);
+      } else {
+        alert('No valid employee data found. Please check that your file has "Employee Number" and "Employee Name" columns.');
       }
     } catch (error) {
-      alert('Error reading file.');
+      console.error('Import error details:', error);
+      alert(`Error reading file: ${error.message || 'Unknown error'}. Please check the console for details.`);
     }
     event.target.value = '';
   };
