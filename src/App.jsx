@@ -396,6 +396,7 @@ export default function App() {
     
     const today = new Date().toLocaleDateString('en-US').replace(/\//g, '-');
     XLSX.writeFile(wb, `${committee.name}-Report-${today}.xlsx`);
+    alert('✅ Report downloaded! Check your downloads folder or tap the download arrow in your browser.');
   };
 
   const approveAllForWeek = async (weekStart, weekEnd, committeeId = null) => {
@@ -425,6 +426,7 @@ export default function App() {
     const now = new Date();
     const week = getWeekDates(now);
     exportReportsByDateRange(week.start, week.end, 'Weekly');
+    alert('✅ Weekly report downloaded! Check your downloads folder or tap the download arrow in your browser.');
   };
 
   const exportReportsByDateRange = (startDate, endDate, reportType = 'Custom') => {
@@ -470,6 +472,11 @@ export default function App() {
     const startStr = startDate.toLocaleDateString('en-US').replace(/\//g, '-');
     const endStr = endDate.toLocaleDateString('en-US').replace(/\//g, '-');
     XLSX.writeFile(wb, `${reportType}-Report-${startStr}-to-${endStr}.xlsx`);
+    
+    // Don't show alert here if called from other functions that show their own alert
+    if (reportType === 'Custom') {
+      alert('✅ Custom report downloaded! Check your downloads folder or tap the download arrow in your browser.');
+    }
   };
 
   const handleDateRangeExport = () => {
@@ -534,6 +541,7 @@ export default function App() {
     const startStr = startDate.toLocaleDateString('en-US').replace(/\//g, '-');
     const endStr = endDate.toLocaleDateString('en-US').replace(/\//g, '-');
     XLSX.writeFile(wb, `${committee.name}-Report-${startStr}-to-${endStr}.xlsx`);
+    alert('✅ Report downloaded! Check your downloads folder or tap the download arrow in your browser.');
   };
 
   const getCurrentMonthDates = () => {
@@ -563,6 +571,7 @@ export default function App() {
     } else {
       exportReportsByDateRange(start, end, 'Monthly');
     }
+    alert('✅ Monthly report downloaded! Check your downloads folder or tap the download arrow in your browser.');
   };
 
   const exportQuarterlyReport = () => {
@@ -572,6 +581,7 @@ export default function App() {
     } else {
       exportReportsByDateRange(start, end, 'Quarterly');
     }
+    alert('✅ Quarterly report downloaded! Check your downloads folder or tap the download arrow in your browser.');
   };
 
   const clockIn = async () => {
