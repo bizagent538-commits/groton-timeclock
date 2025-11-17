@@ -84,7 +84,32 @@ export default function App() {
       ]);
       setEmployees(empRes.data || []);
       setCommittees(comRes.data || []);
-      setTimeEntries(entRes.data || []);
+      
+      const entries = entRes.data || [];
+      const now = new Date();
+      
+      // Auto clock out entries older than 12 hours
+      for (const entry of entries) {
+        if (!entry.clock_out) {
+          const clockInTime = new Date(entry.clock_in);
+          const hoursSinceClockIn = (now - clockInTime) / 3600000;
+          
+          if (hoursSinceClockIn >= 12) {
+            // Auto clock out at exactly 12 hours after clock in
+            const autoClockOutTime = new Date(clockInTime);
+            autoClockOutTime.setHours(autoClockOutTime.getHours() + 12);
+            
+            await supabase.from('time_entries').update({
+              clock_out: autoClockOutTime.toISOString(),
+              notes: (entry.notes || '') + (entry.notes ? ' | ' : '') + '[Auto clocked out after 12 hours]'
+            }).eq('id', entry.id);
+          }
+        }
+      }
+      
+      // Reload entries after any auto clock outs
+      const updatedEntRes = await supabase.from('time_entries').select();
+      setTimeEntries(updatedEntRes.data || []);
     } catch (error) {
       console.error('Error:', error);
     } finally {
