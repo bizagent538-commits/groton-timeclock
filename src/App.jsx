@@ -485,10 +485,55 @@ export default function App() {
       alert('Start must be before end.');
       return;
     }
-    exportReportsByDateRange(start, end, 'Custom');
+    
+    if (loggedInCommittee) {
+      // Committee chair export - only their committee
+      exportCommitteeReportByDateRange(loggedInCommittee.id, start, end);
+    } else {
+      // Admin export - all committees
+      exportReportsByDateRange(start, end, 'Custom');
+    }
+    
     setShowDateRangeExport(false);
     setExportStartDate('');
     setExportEndDate('');
+  };
+
+  const exportCommitteeReportByDateRange = (committeeId, startDate, endDate) => {
+    const committee = committees.find(c => c.id === committeeId);
+    if (!committee) return;
+
+    const committeeEntries = timeEntries.filter(e => {
+      const entryDate = new Date(e.clock_in);
+      return e.committee_id === committeeId && 
+             e.clock_out && 
+             entryDate >= startDate && 
+             entryDate <= endDate;
+    });
+    
+    if (committeeEntries.length === 0) {
+      alert('No completed time entries found for the selected date range.');
+      return;
+    }
+
+    const wb = XLSX.utils.book_new();
+    const data = committeeEntries.map(entry => ({
+      'Employee Number': entry.employee_number,
+      'Employee Name': entry.employee_name,
+      'Date': new Date(entry.clock_in).toLocaleDateString('en-US'),
+      'Clock In': new Date(entry.clock_in).toLocaleTimeString('en-US'),
+      'Clock Out': new Date(entry.clock_out).toLocaleTimeString('en-US'),
+      'Hours': calculateHours(entry.clock_in, entry.clock_out).toFixed(2),
+      'Status': entry.status || 'pending',
+      'Notes': entry.notes || ''
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    XLSX.utils.book_append_sheet(wb, ws, 'Time Entries');
+    
+    const startStr = startDate.toLocaleDateString('en-US').replace(/\//g, '-');
+    const endStr = endDate.toLocaleDateString('en-US').replace(/\//g, '-');
+    XLSX.writeFile(wb, `${committee.name}-Report-${startStr}-to-${endStr}.xlsx`);
   };
 
   const clockIn = async () => {
@@ -733,13 +778,20 @@ export default function App() {
             )}
 
             {loggedInCommittee && (
-              <div className="mb-6">
+              <div className="space-y-2 mb-6">
                 <button 
                   onClick={() => exportCommitteeReport(loggedInCommittee.id)} 
                   className="w-full px-6 py-3 bg-emerald-600 text-white rounded-lg flex items-center justify-center gap-2"
                 >
                   <Download className="w-5 h-5" />
-                  Export My Committee's Report
+                  Export All Time Entries
+                </button>
+                <button 
+                  onClick={() => setShowDateRangeExport(true)} 
+                  className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg flex items-center justify-center gap-2"
+                >
+                  <Calendar className="w-5 h-5" />
+                  Export by Date Range
                 </button>
               </div>
             )}
