@@ -519,6 +519,32 @@ export default function App() {
             )}
 
             {showApprovals && !loggedInCommittee ? (
+        <div className="bg-red-50 border-2 border-red-200 rounded-lg p-4 mb-6">
+                  <h3 className="font-semibold text-red-900 mb-2">⚠️ Danger Zone</h3>
+                  <p className="text-sm text-red-700 mb-3">This will permanently delete all data.</p>
+                  <button
+                    onClick={async () => {
+                      if (confirm('⚠️ WARNING: Delete ALL employees, committees, and time entries? This cannot be undone!')) {
+                        if (confirm('Are you ABSOLUTELY sure? This is your last chance!')) {
+                          for (const emp of employees) {
+                            await supabase.from('employees').delete().eq('id', emp.id);
+                          }
+                          for (const com of committees) {
+                            await supabase.from('committees').delete().eq('id', com.id);
+                          }
+                          for (const entry of timeEntries) {
+                            await supabase.from('time_entries').delete().eq('id', entry.id);
+                          }
+                          loadData();
+                          alert('All data has been deleted.');
+                        }
+                      }
+                    }}
+                    className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-semibold"
+                  >
+                    Reset All Data
+                  </button>
+                </div>
               <div className="bg-white rounded-lg shadow-lg p-6">
                 <h2 className="text-xl font-bold mb-4">Approve Weekly Hours</h2>
                 {committees.map(committee => {
