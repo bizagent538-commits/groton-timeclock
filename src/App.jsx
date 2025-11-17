@@ -534,7 +534,11 @@ export default function App() {
                         <h3 className="text-lg font-semibold">{committee.name}</h3>
                         {pendingCount > 0 && (
                           <button
-                            onClick={() => approveAllForWeek(week.start, week.end, committee.id)}
+                            onClick={async () => {
+  for (const entry of committeeEntries.filter(e => e.status === 'pending')) {
+    await approveEntry(entry.id);
+  }
+}}
                             className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm"
                           >
                             Approve All ({pendingCount})
