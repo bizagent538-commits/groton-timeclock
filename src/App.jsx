@@ -502,24 +502,8 @@ export default function App() {
             )}
 
             {!loggedInCommittee && (
-              <div className="flex gap-2 mb-6">
-                <button
-                  onClick={() => setShowApprovals(false)}
-                  className={`flex-1 px-6 py-3 rounded-lg ${!showApprovals ? 'bg-indigo-600 text-white' : 'bg-gray-200'}`}
-                >
-                  Management
-                </button>
-                <button
-                  onClick={() => setShowApprovals(true)}
-                  className={`flex-1 px-6 py-3 rounded-lg ${showApprovals ? 'bg-indigo-600 text-white' : 'bg-gray-200'}`}
-                >
-                  Approve Hours
-                </button>
-              </div>
-            )}
-
-            {showApprovals && !loggedInCommittee ? (
- <div className="bg-red-50 border-2 border-red-200 rounded-lg p-4 mb-6">
+              <>
+                <div className="bg-red-50 border-2 border-red-200 rounded-lg p-4 mb-6">
                   <h3 className="font-semibold text-red-900 mb-2">⚠️ Danger Zone</h3>
                   <p className="text-sm text-red-700 mb-3">This will permanently delete all data.</p>
                   <button
@@ -545,13 +529,32 @@ export default function App() {
                     Reset All Data
                   </button>
                 </div>
+
+                <div className="flex gap-2 mb-6">
+                  <button
+                    onClick={() => setShowApprovals(false)}
+                    className={`flex-1 px-6 py-3 rounded-lg ${!showApprovals ? 'bg-indigo-600 text-white' : 'bg-gray-200'}`}
+                  >
+                    Management
+                  </button>
+                  <button
+                    onClick={() => setShowApprovals(true)}
+                    className={`flex-1 px-6 py-3 rounded-lg ${showApprovals ? 'bg-indigo-600 text-white' : 'bg-gray-200'}`}
+                  >
+                    Approve Hours
+                  </button>
+                </div>
+              </>
+            )}
+
+            {showApprovals && !loggedInCommittee ? (
               <div className="bg-white rounded-lg shadow-lg p-6">
                 <h2 className="text-xl font-bold mb-4">Approve Weekly Hours</h2>
                 {committees.map(committee => {
                   const week = getWeekDates(new Date());
-                 const committeeEntries = timeEntries.filter(e => {
-  return e.committee_id === committee.id && e.clock_out;
-});
+                  const committeeEntries = timeEntries.filter(e => {
+                    return e.committee_id === committee.id && e.clock_out;
+                  });
                   if (committeeEntries.length === 0) return null;
                   const pendingCount = committeeEntries.filter(e => e.status === 'pending').length;
                   return (
@@ -561,10 +564,10 @@ export default function App() {
                         {pendingCount > 0 && (
                           <button
                             onClick={async () => {
-  for (const entry of committeeEntries.filter(e => e.status === 'pending')) {
-    await approveEntry(entry.id);
-  }
-}}
+                              for (const entry of committeeEntries.filter(e => e.status === 'pending')) {
+                                await approveEntry(entry.id);
+                              }
+                            }}
                             className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm"
                           >
                             Approve All ({pendingCount})
@@ -658,25 +661,25 @@ export default function App() {
                     </div>
                     <div className="mt-4">
                       <h3 className="font-semibold mb-2">Employees ({employees.length}):</h3>
-                     <div className="space-y-1 max-h-40 overflow-y-auto">
-  {employees.map(emp => (
-    <div key={emp.id} className="text-sm p-2 bg-white rounded border flex justify-between items-center">
-      <span>#{emp.number} - {emp.name}</span>
-      <button
-        onClick={async () => {
-          if (confirm(`Delete ${emp.name}? This will remove all their time entries.`)) {
-            await supabase.from('employees').delete().eq('id', emp.id);
-            await supabase.from('time_entries').delete().eq('employee_id', emp.id);
-            loadData();
-          }
-        }}
-        className="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-xs"
-      >
-        Delete
-      </button>
-    </div>
-  ))}
-</div>
+                      <div className="space-y-1 max-h-40 overflow-y-auto">
+                        {employees.map(emp => (
+                          <div key={emp.id} className="text-sm p-2 bg-white rounded border flex justify-between items-center">
+                            <span>#{emp.number} - {emp.name}</span>
+                            <button
+                              onClick={async () => {
+                                if (confirm(`Delete ${emp.name}? This will remove all their time entries.`)) {
+                                  await supabase.from('employees').delete().eq('id', emp.id);
+                                  await supabase.from('time_entries').delete().eq('employee_id', emp.id);
+                                  loadData();
+                                }
+                              }}
+                              className="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-xs"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
 
@@ -714,28 +717,28 @@ export default function App() {
                     </div>
                     <div className="mt-4">
                       <h3 className="font-semibold mb-2">Committees ({committees.length}):</h3>
-<div className="space-y-1 max-h-40 overflow-y-auto">
-  {committees.map(com => (
-    <div key={com.id} className="text-sm p-2 bg-white rounded border flex justify-between items-center">
-      <div>
-        <div className="font-semibold">{com.name}</div>
-        <div className="text-xs text-gray-600">Chair: {com.chair}</div>
-      </div>
-      <button
-        onClick={async () => {
-          if (confirm(`Delete ${com.name}? This will remove all related time entries.`)) {
-            await supabase.from('committees').delete().eq('id', com.id);
-            await supabase.from('time_entries').delete().eq('committee_id', com.id);
-            loadData();
-          }
-        }}
-        className="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-xs"
-      >
-        Delete
-      </button>
-    </div>
-  ))}
-</div>
+                      <div className="space-y-1 max-h-40 overflow-y-auto">
+                        {committees.map(com => (
+                          <div key={com.id} className="text-sm p-2 bg-white rounded border flex justify-between items-center">
+                            <div>
+                              <div className="font-semibold">{com.name}</div>
+                              <div className="text-xs text-gray-600">Chair: {com.chair}</div>
+                            </div>
+                            <button
+                              onClick={async () => {
+                                if (confirm(`Delete ${com.name}? This will remove all related time entries.`)) {
+                                  await supabase.from('committees').delete().eq('id', com.id);
+                                  await supabase.from('time_entries').delete().eq('committee_id', com.id);
+                                  loadData();
+                                }
+                              }}
+                              className="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-xs"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>
