@@ -1,0 +1,34 @@
+{
+  "crons": [
+    {
+      "path": "/api/keep-alive",
+      "schedule": "0 12 * * *"
+    }
+  ]
+}
+```
+
+5. Click **Commit changes**
+
+### **Step 2: Delete the Old One**
+
+1. Navigate to `src/api/vercel.json`
+2. Click the file
+3. Click the trash icon (🗑️) to delete it
+4. Commit the deletion
+
+---
+
+## 📁 Correct Structure Should Be:
+```
+groton-timeclock/              ← Root
+├── vercel.json               ⬅️ HERE (same level as package.json)
+├── package.json              
+├── index.html
+├── vite.config.js
+├── src/
+│   ├── api/
+│   │   └── keep-alive.js     ✅ This is correct
+│   ├── App.jsx
+│   └── main.jsx
+└── ...
