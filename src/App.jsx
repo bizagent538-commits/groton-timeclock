@@ -16,7 +16,15 @@ const supabase = {
       const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=*`, {
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
       });
-      return { data: await res.json() };
+      
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error(`Error fetching ${table}:`, res.status, errorText);
+        return { data: [], error: { message: errorText, status: res.status } };
+      }
+      
+      const data = await res.json();
+      return { data: Array.isArray(data) ? data : [], error: null };
     },
     insert: async (data) => {
       const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
@@ -78,6 +86,8 @@ export default function App() {
 
   const loadData = async () => {
     console.log('Loading data... URL:', SUPABASE_URL);
+    console.log('API Key present:', SUPABASE_KEY ? 'Yes' : 'No');
+    
     try {
       const [empRes, comRes, entRes] = await Promise.all([
         supabase.from('employees').select(),
@@ -85,8 +95,25 @@ export default function App() {
         supabase.from('time_entries').select()
       ]);
       
-      console.log('Employees loaded:', empRes.data?.length || 0);
-      console.log('Committees loaded:', comRes.data?.length || 0);
+      // Check for errors
+      if (empRes.error) {
+        console.error('Employee fetch error:', empRes.error);
+        alert(`Error loading employees: ${empRes.error.message}`);
+        return;
+      }
+      if (comRes.error) {
+        console.error('Committee fetch error:', comRes.error);
+        alert(`Error loading committees: ${comRes.error.message}`);
+        return;
+      }
+      if (entRes.error) {
+        console.error('Time entry fetch error:', entRes.error);
+        alert(`Error loading time entries: ${entRes.error.message}`);
+        return;
+      }
+      
+      console.log('Employees loaded:', empRes.data?.length || 0, empRes.data);
+      console.log('Committees loaded:', comRes.data?.length || 0, comRes.data);
       console.log('Time entries loaded:', entRes.data?.length || 0);
       
       setEmployees(empRes.data || []);
@@ -116,7 +143,9 @@ export default function App() {
       
       // Reload entries after any auto clock outs
       const updatedEntRes = await supabase.from('time_entries').select();
-      setTimeEntries(updatedEntRes.data || []);
+      if (!updatedEntRes.error) {
+        setTimeEntries(updatedEntRes.data || []);
+      }
     } catch (error) {
       console.error('Error loading data:', error);
       alert(`Error loading data: ${error.message}. Check console for details.`);
