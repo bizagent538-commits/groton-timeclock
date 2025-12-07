@@ -82,7 +82,7 @@ export default function App() {
   const [editClockOut, setEditClockOut] = useState('');
   const [editNotes, setEditNotes] = useState('');
   const [selectedEntries, setSelectedEntries] = useState([]);
-  const ADMIN_PASSWORD = 'jackal';
+  const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'jackal'; // Temporary fallback for testing
 
   const loadData = async () => {
     console.log('Loading data... URL:', SUPABASE_URL);
@@ -178,6 +178,18 @@ export default function App() {
 
   const addEmployee = async () => {
     if (newEmployeeName.trim() && newEmployeeNumber.trim()) {
+      // Validate employee number (alphanumeric, hyphens, underscores only)
+      if (!/^[a-zA-Z0-9_-]+$/.test(newEmployeeNumber.trim())) {
+        alert('Employee number can only contain letters, numbers, hyphens, and underscores.');
+        return;
+      }
+      
+      // Validate name (letters, spaces, hyphens, apostrophes only)
+      if (!/^[a-zA-Z\s'-]+$/.test(newEmployeeName.trim())) {
+        alert('Employee name can only contain letters, spaces, hyphens, and apostrophes.');
+        return;
+      }
+      
       const exists = employees.some(e => e.number === newEmployeeNumber.trim());
       if (exists) {
         alert('Employee number exists!');
@@ -196,11 +208,29 @@ export default function App() {
 
   const addCommittee = async () => {
     if (newCommitteeName.trim() && newCommitteeChair.trim() && newCommitteePassword.trim()) {
+      // Validate committee name
+      if (!/^[a-zA-Z0-9\s&'-]+$/.test(newCommitteeName.trim())) {
+        alert('Committee name can only contain letters, numbers, spaces, and basic punctuation.');
+        return;
+      }
+      
+      // Validate chair name
+      if (!/^[a-zA-Z\s'-]+$/.test(newCommitteeChair.trim())) {
+        alert('Chair name can only contain letters, spaces, hyphens, and apostrophes.');
+        return;
+      }
+      
+      // Validate password strength (at least 6 characters)
+      if (newCommitteePassword.trim().length < 6) {
+        alert('Password must be at least 6 characters long.');
+        return;
+      }
+      
       await supabase.from('committees').insert({
         id: Date.now(),
         name: newCommitteeName.trim(),
         chair: newCommitteeChair.trim(),
-        password: newCommitteePassword.trim()
+        password: newCommitteePassword.trim() // TODO: Hash this in Phase 2
       });
       setNewCommitteeName('');
       setNewCommitteeChair('');
@@ -268,7 +298,10 @@ export default function App() {
 
   const handleLogin = () => {
     if (!loginInput.trim()) return;
-    const input = loginInput.trim().toLowerCase();
+    
+    // Sanitize input
+    const input = loginInput.trim().toLowerCase().replace(/[<>]/g, '');
+    
     const employee = employees.find(e => 
       e.number.toLowerCase() === input || e.name.toLowerCase() === input
     );
@@ -651,9 +684,12 @@ export default function App() {
       .filter(e => e.employee_id === loggedInEmployee.id && !e.clock_out)
       .sort((a, b) => new Date(b.clock_in) - new Date(a.clock_in))[0];
     if (lastEntry) {
+      // Sanitize notes (remove HTML tags and dangerous characters)
+      const sanitizedNotes = clockOutNotes.trim().replace(/[<>]/g, '');
+      
       await supabase.from('time_entries').update({
         clock_out: new Date().toISOString(),
-        notes: clockOutNotes.trim()
+        notes: sanitizedNotes
       }).eq('id', lastEntry.id);
       setClockOutNotes('');
       setLoggedInEmployee(null);
