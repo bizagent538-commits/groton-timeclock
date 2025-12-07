@@ -77,12 +77,18 @@ export default function App() {
   const ADMIN_PASSWORD = 'jackal';
 
   const loadData = async () => {
+    console.log('Loading data... URL:', SUPABASE_URL);
     try {
       const [empRes, comRes, entRes] = await Promise.all([
         supabase.from('employees').select(),
         supabase.from('committees').select(),
         supabase.from('time_entries').select()
       ]);
+      
+      console.log('Employees loaded:', empRes.data?.length || 0);
+      console.log('Committees loaded:', comRes.data?.length || 0);
+      console.log('Time entries loaded:', entRes.data?.length || 0);
+      
       setEmployees(empRes.data || []);
       setCommittees(comRes.data || []);
       
@@ -112,7 +118,8 @@ export default function App() {
       const updatedEntRes = await supabase.from('time_entries').select();
       setTimeEntries(updatedEntRes.data || []);
     } catch (error) {
-      console.error('Error:', error);
+      console.error('Error loading data:', error);
+      alert(`Error loading data: ${error.message}. Check console for details.`);
     } finally {
       setIsLoading(false);
     }
