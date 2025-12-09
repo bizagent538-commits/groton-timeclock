@@ -137,51 +137,77 @@ export default function App() {
     setIsLoading(true);
     
     try {
-      const [empRes, comRes, entRes] = await supabase
-        .from('employees')
-        .select('*')
-        .then(r1 => Promise.all([
-          Promise.resolve(r1),
-          supabase.from('committees').select('*'),
-          supabase.from('time_entries').select('*')
-        ]));
+      const [empRes, comRes, entRes] = await Promise.all([
+        supabase.from('employees').select('*'),
+        supabase.from('committees').select('*'),
+        supabase.from('time_entries').select('*')
+      ]);
 
-      if (empRes.error) throw empRes.error;
-      if (comRes.error) throw comRes.error;
-      if (entRes.error) throw entRes.error;
+      // Handle RLS policy errors gracefully
+      if (empRes.error) {
+        console.error('Error loading employees:', empRes.error);
+        if (empRes.error.message.includes('infinite recursion') || empRes.error.code === '42P17') {
+          // RLS policy issue - set empty arrays
+          setEmployees([]);
+        } else {
+          throw empRes.error;
+        }
+      } else {
+        setEmployees(empRes.data || []);
+      }
 
-      setEmployees(empRes.data || []);
-      setCommittees(comRes.data || []);
-      
-      const entries = entRes.data || [];
-      const now = new Date();
-      
-      // Auto clock out entries older than 12 hours
-      for (const entry of entries) {
-        if (!entry.clock_out) {
-          const clockInTime = new Date(entry.clock_in);
-          const hoursSinceClockIn = (now - clockInTime) / 3600000;
-          
-          if (hoursSinceClockIn >= 12) {
-            const autoClockOutTime = new Date(clockInTime);
-            autoClockOutTime.setHours(autoClockOutTime.getHours() + 12);
+      if (comRes.error) {
+        console.error('Error loading committees:', comRes.error);
+        if (comRes.error.message.includes('infinite recursion') || comRes.error.code === '42P17') {
+          setCommittees([]);
+        } else {
+          throw comRes.error;
+        }
+      } else {
+        setCommittees(comRes.data || []);
+      }
+
+      if (entRes.error) {
+        console.error('Error loading time entries:', entRes.error);
+        if (entRes.error.message.includes('infinite recursion') || entRes.error.code === '42P17') {
+          setTimeEntries([]);
+        } else {
+          throw entRes.error;
+        }
+      } else {
+        const entries = entRes.data || [];
+        const now = new Date();
+        
+        // Auto clock out entries older than 12 hours
+        for (const entry of entries) {
+          if (!entry.clock_out) {
+            const clockInTime = new Date(entry.clock_in);
+            const hoursSinceClockIn = (now - clockInTime) / 3600000;
             
-            await supabase.from('time_entries')
-              .update({
-                clock_out: autoClockOutTime.toISOString(),
-                notes: (entry.notes || '') + (entry.notes ? ' | ' : '') + '[Auto clocked out after 12 hours]'
-              })
-              .eq('id', entry.id);
+            if (hoursSinceClockIn >= 12) {
+              const autoClockOutTime = new Date(clockInTime);
+              autoClockOutTime.setHours(autoClockOutTime.getHours() + 12);
+              
+              await supabase.from('time_entries')
+                .update({
+                  clock_out: autoClockOutTime.toISOString(),
+                  notes: (entry.notes || '') + (entry.notes ? ' | ' : '') + '[Auto clocked out after 12 hours]'
+                })
+                .eq('id', entry.id);
+            }
           }
         }
-      }
-      
-      const updatedEntRes = await supabase.from('time_entries').select('*');
-      if (!updatedEntRes.error) {
-        setTimeEntries(updatedEntRes.data || []);
+        
+        const updatedEntRes = await supabase.from('time_entries').select('*');
+        if (!updatedEntRes.error) {
+          setTimeEntries(updatedEntRes.data || []);
+        } else {
+          setTimeEntries(entries);
+        }
       }
     } catch (error) {
       console.error('Error loading data:', error);
+      // Don't show alert on every refresh - just log it
     } finally {
       setIsLoading(false);
     }
@@ -189,9 +215,14 @@ export default function App() {
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 5000);
+    const interval = setInterval(() => {
+      // Don't reload if auth modal is open or user is in the middle of something
+      if (!showAuthModal && !editingEntry) {
+        loadData();
+      }
+    }, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [showAuthModal, editingEntry]);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
