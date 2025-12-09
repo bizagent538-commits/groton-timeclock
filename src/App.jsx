@@ -54,6 +54,9 @@ export default function App() {
       setUser(session?.user ?? null);
       if (session?.user) {
         loadUserProfile(session.user.id);
+      } else {
+        // Load data even if not authenticated (for volunteer login)
+        loadData();
       }
     });
 
@@ -63,6 +66,8 @@ export default function App() {
         loadUserProfile(session.user.id);
       } else {
         setUserProfile(null);
+        // Load data for volunteer screen
+        loadData();
       }
     });
 
@@ -96,10 +101,7 @@ export default function App() {
       if (error) throw error;
       
       setUserProfile(data);
-      
-      if (data.role === 'admin' || data.role === 'chair') {
-        loadData();
-      }
+      loadData(); // Load data for everyone (volunteers need employee list)
     } catch (error) {
       console.error('Error loading user profile:', error);
     }
