@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { User, LogOut, Plus, Trash2 } from 'lucide-react';
+import { User, LogOut, Plus, Trash2, Building2 } from 'lucide-react';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://gvfaxuzoisjjbootvcqu.supabase.co';
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd2ZmF4dXpvaXNqamJvb3R2Y3F1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMyMzc4NjYsImV4cCI6MjA3ODgxMzg2Nn0.a9LDduCQCMfHX6L4Znnticljxi4iKE5tyzschDfS1-I';
@@ -21,7 +21,11 @@ export default function App() {
   const [newEmployeeName, setNewEmployeeName] = useState('');
   const [newEmployeeNumber, setNewEmployeeNumber] = useState('');
 
-  // Check for existing session on mount
+  // Committee state
+  const [committees, setCommittees] = useState([]);
+  const [newCommitteeName, setNewCommitteeName] = useState('');
+  const [newCommitteeChair, setNewCommitteeChair] = useState('');
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
@@ -42,7 +46,6 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Load user profile from users table
   const loadUserProfile = async (userId) => {
     try {
       const { data, error } = await supabase
@@ -56,16 +59,15 @@ export default function App() {
       setUserProfile(data);
       console.log('User profile loaded:', data);
       
-      // Load employees if admin
       if (data.role === 'admin') {
         loadEmployees();
+        loadCommittees();
       }
     } catch (error) {
       console.error('Error loading user profile:', error);
     }
   };
 
-  // Load employees
   const loadEmployees = async () => {
     try {
       const { data, error } = await supabase
@@ -83,26 +85,39 @@ export default function App() {
     }
   };
 
-  // Add employee
+  const loadCommittees = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('committees')
+        .select('*')
+        .order('name');
+
+      if (error) throw error;
+      
+      setCommittees(data || []);
+      console.log('Committees loaded:', data?.length || 0);
+    } catch (error) {
+      console.error('Error loading committees:', error);
+      setCommittees([]);
+    }
+  };
+
   const addEmployee = async () => {
     if (!newEmployeeName.trim() || !newEmployeeNumber.trim()) {
       alert('Please fill in both name and employee number');
       return;
     }
 
-    // Validate employee number
     if (!/^[a-zA-Z0-9_-]+$/.test(newEmployeeNumber.trim())) {
       alert('Employee number can only contain letters, numbers, hyphens, and underscores.');
       return;
     }
 
-    // Validate name
     if (!/^[a-zA-Z\s'-]+$/.test(newEmployeeName.trim())) {
       alert('Employee name can only contain letters, spaces, hyphens, and apostrophes.');
       return;
     }
 
-    // Check if exists
     const exists = employees.some(e => e.number === newEmployeeNumber.trim());
     if (exists) {
       alert('Employee number already exists!');
@@ -128,7 +143,6 @@ export default function App() {
     }
   };
 
-  // Delete employee
   const deleteEmployee = async (id) => {
     if (!confirm('Delete this employee?')) return;
 
@@ -144,6 +158,61 @@ export default function App() {
       alert('✅ Employee deleted!');
     } catch (error) {
       console.error('Error deleting employee:', error);
+      alert(`Error: ${error.message}`);
+    }
+  };
+
+  const addCommittee = async () => {
+    if (!newCommitteeName.trim() || !newCommitteeChair.trim()) {
+      alert('Please fill in both committee name and chair name');
+      return;
+    }
+
+    if (!/^[a-zA-Z0-9\s&'-]+$/.test(newCommitteeName.trim())) {
+      alert('Committee name can only contain letters, numbers, spaces, and basic punctuation.');
+      return;
+    }
+
+    if (!/^[a-zA-Z\s'-]+$/.test(newCommitteeChair.trim())) {
+      alert('Chair name can only contain letters, spaces, hyphens, and apostrophes.');
+      return;
+    }
+
+    try {
+      const { error } = await supabase.from('committees').insert({
+        id: Date.now(),
+        name: newCommitteeName.trim(),
+        chair: newCommitteeChair.trim(),
+        password: '' // No longer used with auth
+      });
+
+      if (error) throw error;
+
+      setNewCommitteeName('');
+      setNewCommitteeChair('');
+      loadCommittees();
+      alert('✅ Committee added!');
+    } catch (error) {
+      console.error('Error adding committee:', error);
+      alert(`Error: ${error.message}`);
+    }
+  };
+
+  const deleteCommittee = async (id) => {
+    if (!confirm('Delete this committee?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('committees')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      loadCommittees();
+      alert('✅ Committee deleted!');
+    } catch (error) {
+      console.error('Error deleting committee:', error);
       alert(`Error: ${error.message}`);
     }
   };
@@ -174,6 +243,7 @@ export default function App() {
     try {
       await supabase.auth.signOut();
       setEmployees([]);
+      setCommittees([]);
     } catch (error) {
       console.error('Logout error:', error);
     }
@@ -191,7 +261,7 @@ export default function App() {
             <div className="flex justify-between items-center">
               <div>
                 <h1 className="text-3xl font-bold">Groton Sportsmen's Club</h1>
-                <p className="text-gray-600 mt-1">Time Clock System - Step 1: Employee Management</p>
+                <p className="text-gray-600 mt-1">Time Clock System - Step 2: Committee Management</p>
               </div>
               <button
                 onClick={handleLogout}
@@ -217,112 +287,188 @@ export default function App() {
             </div>
           </div>
 
-          {/* Admin Only: Employee Management */}
+          {/* Admin Panel */}
           {isAdmin && (
-            <div className="bg-white rounded-lg shadow-xl p-6">
-              <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
-                <User size={28} />
-                Employee Management
-              </h2>
+            <div className="space-y-6">
+              {/* Employee Management */}
+              <div className="bg-white rounded-lg shadow-xl p-6">
+                <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
+                  <User size={28} />
+                  Employee Management
+                </h2>
 
-              {/* Add Employee Form */}
-              <div className="mb-6 p-4 bg-blue-50 rounded-lg border-2 border-blue-200">
-                <h3 className="font-semibold mb-4">Add New Employee</h3>
-                <div className="flex gap-4">
-                  <input
-                    type="text"
-                    value={newEmployeeName}
-                    onChange={(e) => setNewEmployeeName(e.target.value)}
-                    placeholder="Employee Name"
-                    className="flex-1 px-4 py-3 border-2 rounded-lg text-lg"
-                    onKeyPress={(e) => e.key === 'Enter' && newEmployeeNumber && addEmployee()}
-                  />
-                  <input
-                    type="text"
-                    value={newEmployeeNumber}
-                    onChange={(e) => setNewEmployeeNumber(e.target.value)}
-                    placeholder="Employee Number"
-                    className="w-48 px-4 py-3 border-2 rounded-lg text-lg"
-                    onKeyPress={(e) => e.key === 'Enter' && newEmployeeName && addEmployee()}
-                  />
-                  <button
-                    onClick={addEmployee}
-                    className="px-6 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 flex items-center gap-2"
-                  >
-                    <Plus size={20} />
-                    Add Employee
-                  </button>
+                <div className="mb-6 p-4 bg-blue-50 rounded-lg border-2 border-blue-200">
+                  <h3 className="font-semibold mb-4">Add New Employee</h3>
+                  <div className="flex gap-4">
+                    <input
+                      type="text"
+                      value={newEmployeeName}
+                      onChange={(e) => setNewEmployeeName(e.target.value)}
+                      placeholder="Employee Name"
+                      className="flex-1 px-4 py-3 border-2 rounded-lg text-lg"
+                      onKeyPress={(e) => e.key === 'Enter' && newEmployeeNumber && addEmployee()}
+                    />
+                    <input
+                      type="text"
+                      value={newEmployeeNumber}
+                      onChange={(e) => setNewEmployeeNumber(e.target.value)}
+                      placeholder="Employee Number"
+                      className="w-48 px-4 py-3 border-2 rounded-lg text-lg"
+                      onKeyPress={(e) => e.key === 'Enter' && newEmployeeName && addEmployee()}
+                    />
+                    <button
+                      onClick={addEmployee}
+                      className="px-6 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 flex items-center gap-2"
+                    >
+                      <Plus size={20} />
+                      Add
+                    </button>
+                  </div>
                 </div>
-                <p className="text-sm text-gray-600 mt-2">
-                  💡 Press Enter in either field to add employee quickly
-                </p>
-              </div>
 
-              {/* Employee List */}
-              <div>
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="font-semibold text-lg">
+                <div>
+                  <h3 className="font-semibold text-lg mb-4">
                     Employees ({employees.length})
                   </h3>
-                </div>
 
-                {employees.length === 0 ? (
-                  <div className="text-center py-12 text-gray-500">
-                    <User size={48} className="mx-auto mb-4 opacity-50" />
-                    <p className="text-lg">No employees yet</p>
-                    <p className="text-sm">Add your first employee above</p>
-                  </div>
-                ) : (
-                  <div className="border-2 rounded-lg overflow-hidden">
-                    <table className="w-full">
-                      <thead className="bg-gray-100">
-                        <tr>
-                          <th className="p-4 text-left font-semibold">Employee Number</th>
-                          <th className="p-4 text-left font-semibold">Name</th>
-                          <th className="p-4 text-left font-semibold">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {employees.map((emp, idx) => (
-                          <tr 
-                            key={emp.id} 
-                            className={`border-t hover:bg-gray-50 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}
-                          >
-                            <td className="p-4 font-mono">{emp.number}</td>
-                            <td className="p-4 font-semibold">{emp.name}</td>
-                            <td className="p-4">
-                              <button
-                                onClick={() => deleteEmployee(emp.id)}
-                                className="flex items-center gap-2 px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200"
-                              >
-                                <Trash2 size={16} />
-                                Delete
-                              </button>
-                            </td>
+                  {employees.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500">
+                      <p>No employees yet</p>
+                    </div>
+                  ) : (
+                    <div className="border-2 rounded-lg overflow-hidden">
+                      <table className="w-full">
+                        <thead className="bg-gray-100">
+                          <tr>
+                            <th className="p-4 text-left font-semibold">Number</th>
+                            <th className="p-4 text-left font-semibold">Name</th>
+                            <th className="p-4 text-left font-semibold">Actions</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                        </thead>
+                        <tbody>
+                          {employees.map((emp, idx) => (
+                            <tr 
+                              key={emp.id} 
+                              className={`border-t hover:bg-gray-50 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}
+                            >
+                              <td className="p-4 font-mono">{emp.number}</td>
+                              <td className="p-4 font-semibold">{emp.name}</td>
+                              <td className="p-4">
+                                <button
+                                  onClick={() => deleteEmployee(emp.id)}
+                                  className="flex items-center gap-2 px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200"
+                                >
+                                  <Trash2 size={16} />
+                                  Delete
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              {/* Progress Indicator */}
-              <div className="mt-6 p-4 bg-green-50 rounded-lg border-2 border-green-200">
-                <p className="text-sm text-green-800">
-                  ✅ <strong>Step 1 Complete:</strong> Employee management is working!<br/>
-                  <strong>Next:</strong> We'll add Committee management (Step 2)
-                </p>
+              {/* Committee Management */}
+              <div className="bg-white rounded-lg shadow-xl p-6">
+                <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
+                  <Building2 size={28} />
+                  Committee Management
+                </h2>
+
+                <div className="mb-6 p-4 bg-green-50 rounded-lg border-2 border-green-200">
+                  <h3 className="font-semibold mb-4">Add New Committee</h3>
+                  <div className="flex gap-4">
+                    <input
+                      type="text"
+                      value={newCommitteeName}
+                      onChange={(e) => setNewCommitteeName(e.target.value)}
+                      placeholder="Committee Name"
+                      className="flex-1 px-4 py-3 border-2 rounded-lg text-lg"
+                      onKeyPress={(e) => e.key === 'Enter' && newCommitteeChair && addCommittee()}
+                    />
+                    <input
+                      type="text"
+                      value={newCommitteeChair}
+                      onChange={(e) => setNewCommitteeChair(e.target.value)}
+                      placeholder="Chair Name"
+                      className="flex-1 px-4 py-3 border-2 rounded-lg text-lg"
+                      onKeyPress={(e) => e.key === 'Enter' && newCommitteeName && addCommittee()}
+                    />
+                    <button
+                      onClick={addCommittee}
+                      className="px-6 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 flex items-center gap-2"
+                    >
+                      <Plus size={20} />
+                      Add
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="font-semibold text-lg mb-4">
+                    Committees ({committees.length})
+                  </h3>
+
+                  {committees.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500">
+                      <Building2 size={48} className="mx-auto mb-4 opacity-50" />
+                      <p className="text-lg">No committees yet</p>
+                      <p className="text-sm">Add your first committee above</p>
+                    </div>
+                  ) : (
+                    <div className="border-2 rounded-lg overflow-hidden">
+                      <table className="w-full">
+                        <thead className="bg-gray-100">
+                          <tr>
+                            <th className="p-4 text-left font-semibold">Committee Name</th>
+                            <th className="p-4 text-left font-semibold">Chair</th>
+                            <th className="p-4 text-left font-semibold">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {committees.map((com, idx) => (
+                            <tr 
+                              key={com.id} 
+                              className={`border-t hover:bg-gray-50 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}
+                            >
+                              <td className="p-4 font-semibold">{com.name}</td>
+                              <td className="p-4">{com.chair}</td>
+                              <td className="p-4">
+                                <button
+                                  onClick={() => deleteCommittee(com.id)}
+                                  className="flex items-center gap-2 px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200"
+                                >
+                                  <Trash2 size={16} />
+                                  Delete
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                {/* Progress */}
+                <div className="mt-6 p-4 bg-green-50 rounded-lg border-2 border-green-200">
+                  <p className="text-sm text-green-800">
+                    ✅ <strong>Step 2 Complete:</strong> Committee management is working!<br/>
+                    <strong>Next:</strong> We'll add Volunteer Clock In/Out (Step 3)
+                  </p>
+                </div>
               </div>
             </div>
           )}
 
-          {/* Not Admin */}
           {!isAdmin && (
             <div className="bg-white rounded-lg shadow-xl p-6">
               <p className="text-center text-gray-600">
                 You are logged in as a {userProfile.role}.<br/>
-                Employee management requires admin access.
+                Management features require admin access.
               </p>
             </div>
           )}
