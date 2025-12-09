@@ -1,121 +1,155 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, Download, User, Calendar, Building2, BarChart3, LogIn, Settings, Upload } from 'lucide-react';
+import { Clock, Download, User, Calendar, Building2, BarChart3, LogIn, LogOut, Settings, Upload, X } from 'lucide-react';
+import { createClient } from '@supabase/supabase-js';
 import * as XLSX from 'xlsx';
 
+// Initialize Supabase client with official SDK
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://gvfaxuzoisjjbootvcqu.supabase.co';
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd2ZmF4dXpvaXNqamJvb3R2Y3F1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMyMzc4NjYsImV4cCI6MjA3ODgxMzg2Nn0.a9LDduCQCMfHX6L4Znnticljxi4iKE5tyzschDfS1-I';
 
-// Debug: Check if environment variables are loaded
-if (!SUPABASE_URL || !SUPABASE_KEY) {
-  console.error('Missing environment variables!', { SUPABASE_URL, SUPABASE_KEY });
-}
-
-const supabase = {
-  from: (table) => ({
-    select: async () => {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=*`, {
-        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
-      });
-      
-      if (!res.ok) {
-        const errorText = await res.text();
-        console.error(`Error fetching ${table}:`, res.status, errorText);
-        return { data: [], error: { message: errorText, status: res.status } };
-      }
-      
-      const data = await res.json();
-      return { data: Array.isArray(data) ? data : [], error: null };
-    },
-    insert: async (data) => {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
-        method: 'POST',
-        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
-        body: JSON.stringify(data)
-      });
-      return { data: await res.json() };
-    },
-    update: (data) => ({
-      eq: async (column, value) => {
-        await fetch(`${SUPABASE_URL}/rest/v1/${table}?${column}=eq.${value}`, {
-          method: 'PATCH',
-          headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify(data)
-        });
-      }
-    }),
-    delete: () => ({
-      eq: async (column, value) => {
-        await fetch(`${SUPABASE_URL}/rest/v1/${table}?${column}=eq.${value}`, {
-          method: 'DELETE',
-          headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
-        });
-      }
-    })
-  })
-};
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 export default function App() {
+  // Data state
   const [employees, setEmployees] = useState([]);
   const [committees, setCommittees] = useState([]);
   const [timeEntries, setTimeEntries] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // Auth state
+  const [user, setUser] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authMode, setAuthMode] = useState(''); // 'admin' or 'chair'
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+  
+  // Employee state
   const [selectedCommittee, setSelectedCommittee] = useState('');
+  const [loginInput, setLoginInput] = useState('');
+  const [loggedInEmployee, setLoggedInEmployee] = useState(null);
+  const [clockOutNotes, setClockOutNotes] = useState('');
+  
+  // Admin state
   const [newEmployeeName, setNewEmployeeName] = useState('');
   const [newEmployeeNumber, setNewEmployeeNumber] = useState('');
   const [newCommitteeName, setNewCommitteeName] = useState('');
   const [newCommitteeChair, setNewCommitteeChair] = useState('');
-  const [newCommitteePassword, setNewCommitteePassword] = useState('');
+  
+  // UI state
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [loginInput, setLoginInput] = useState('');
-  const [loggedInEmployee, setLoggedInEmployee] = useState(null);
-  const [showAdmin, setShowAdmin] = useState(false);
-  const [adminPassword, setAdminPassword] = useState('');
-  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
-  const [showApprovals, setShowApprovals] = useState(false);
-  const [clockOutNotes, setClockOutNotes] = useState('');
   const [showDateRangeExport, setShowDateRangeExport] = useState(false);
   const [exportStartDate, setExportStartDate] = useState('');
   const [exportEndDate, setExportEndDate] = useState('');
-  const [loggedInCommittee, setLoggedInCommittee] = useState(null);
+  
+  // Edit state
   const [editingEntry, setEditingEntry] = useState(null);
   const [editClockIn, setEditClockIn] = useState('');
   const [editClockOut, setEditClockOut] = useState('');
   const [editNotes, setEditNotes] = useState('');
   const [selectedEntries, setSelectedEntries] = useState([]);
-  const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'jackal'; // Temporary fallback for testing
 
+  // Initialize auth
+  useEffect(() => {
+    // Check existing session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        setUser(session.user);
+        loadUserProfile(session.user.id);
+      }
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        loadUserProfile(session.user.id);
+      } else {
+        setUserProfile(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Load user profile
+  const loadUserProfile = async (userId) => {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (error) throw error;
+      setUserProfile(data);
+    } catch (error) {
+      console.error('Error loading user profile:', error);
+    }
+  };
+
+  // Auth functions
+  const handleAuth = async (e) => {
+    e.preventDefault();
+    setAuthError('');
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: authEmail,
+        password: authPassword,
+      });
+
+      if (error) throw error;
+
+      setShowAuthModal(false);
+      setAuthEmail('');
+      setAuthPassword('');
+    } catch (error) {
+      setAuthError(error.message || 'Login failed');
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+      setLoggedInEmployee(null);
+      setSelectedCommittee('');
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+  };
+
+  const openAuthModal = (mode) => {
+    setAuthMode(mode);
+    setShowAuthModal(true);
+    setAuthError('');
+  };
+
+  // Check roles
+  const isAdmin = userProfile?.role === 'admin';
+  const isChair = userProfile?.role === 'chair';
+  const chairCommittee = isChair && userProfile ? 
+    committees.find(c => c.id === userProfile.committee_id) : null;
+
+  // Load data
   const loadData = async () => {
-    console.log('Loading data... URL:', SUPABASE_URL);
-    console.log('API Key present:', SUPABASE_KEY ? 'Yes' : 'No');
+    setIsLoading(true);
     
     try {
-      const [empRes, comRes, entRes] = await Promise.all([
-        supabase.from('employees').select(),
-        supabase.from('committees').select(),
-        supabase.from('time_entries').select()
-      ]);
-      
-      // Check for errors
-      if (empRes.error) {
-        console.error('Employee fetch error:', empRes.error);
-        alert(`Error loading employees: ${empRes.error.message}`);
-        return;
-      }
-      if (comRes.error) {
-        console.error('Committee fetch error:', comRes.error);
-        alert(`Error loading committees: ${comRes.error.message}`);
-        return;
-      }
-      if (entRes.error) {
-        console.error('Time entry fetch error:', entRes.error);
-        alert(`Error loading time entries: ${entRes.error.message}`);
-        return;
-      }
-      
-      console.log('Employees loaded:', empRes.data?.length || 0, empRes.data);
-      console.log('Committees loaded:', comRes.data?.length || 0, comRes.data);
-      console.log('Time entries loaded:', entRes.data?.length || 0);
-      
+      const [empRes, comRes, entRes] = await supabase
+        .from('employees')
+        .select('*')
+        .then(r1 => Promise.all([
+          Promise.resolve(r1),
+          supabase.from('committees').select('*'),
+          supabase.from('time_entries').select('*')
+        ]));
+
+      if (empRes.error) throw empRes.error;
+      if (comRes.error) throw comRes.error;
+      if (entRes.error) throw entRes.error;
+
       setEmployees(empRes.data || []);
       setCommittees(comRes.data || []);
       
@@ -129,26 +163,25 @@ export default function App() {
           const hoursSinceClockIn = (now - clockInTime) / 3600000;
           
           if (hoursSinceClockIn >= 12) {
-            // Auto clock out at exactly 12 hours after clock in
             const autoClockOutTime = new Date(clockInTime);
             autoClockOutTime.setHours(autoClockOutTime.getHours() + 12);
             
-            await supabase.from('time_entries').update({
-              clock_out: autoClockOutTime.toISOString(),
-              notes: (entry.notes || '') + (entry.notes ? ' | ' : '') + '[Auto clocked out after 12 hours]'
-            }).eq('id', entry.id);
+            await supabase.from('time_entries')
+              .update({
+                clock_out: autoClockOutTime.toISOString(),
+                notes: (entry.notes || '') + (entry.notes ? ' | ' : '') + '[Auto clocked out after 12 hours]'
+              })
+              .eq('id', entry.id);
           }
         }
       }
       
-      // Reload entries after any auto clock outs
-      const updatedEntRes = await supabase.from('time_entries').select();
+      const updatedEntRes = await supabase.from('time_entries').select('*');
       if (!updatedEntRes.error) {
         setTimeEntries(updatedEntRes.data || []);
       }
     } catch (error) {
       console.error('Error loading data:', error);
-      alert(`Error loading data: ${error.message}. Check console for details.`);
     } finally {
       setIsLoading(false);
     }
@@ -165,6 +198,7 @@ export default function App() {
     return () => clearInterval(timer);
   }, []);
 
+  // Fiscal year helper
   const getCurrentFiscalYear = () => {
     const now = new Date();
     const currentYear = now.getFullYear();
@@ -176,15 +210,16 @@ export default function App() {
     }
   };
 
+  // Employee functions
   const addEmployee = async () => {
+    if (!isAdmin) return;
+    
     if (newEmployeeName.trim() && newEmployeeNumber.trim()) {
-      // Validate employee number (alphanumeric, hyphens, underscores only)
       if (!/^[a-zA-Z0-9_-]+$/.test(newEmployeeNumber.trim())) {
         alert('Employee number can only contain letters, numbers, hyphens, and underscores.');
         return;
       }
       
-      // Validate name (letters, spaces, hyphens, apostrophes only)
       if (!/^[a-zA-Z\s'-]+$/.test(newEmployeeName.trim())) {
         alert('Employee name can only contain letters, spaces, hyphens, and apostrophes.');
         return;
@@ -195,34 +230,85 @@ export default function App() {
         alert('Employee number exists!');
         return;
       }
+      
       await supabase.from('employees').insert({
         id: Date.now(),
         name: newEmployeeName.trim(),
         number: newEmployeeNumber.trim()
       });
+      
       setNewEmployeeName('');
       setNewEmployeeNumber('');
       loadData();
     }
   };
 
+  const deleteEmployee = async (id) => {
+    if (!isAdmin) return;
+    if (confirm('Delete this employee?')) {
+      await supabase.from('employees').delete().eq('id', id);
+      loadData();
+    }
+  };
+
+  const handleFileImport = async (e) => {
+    if (!isAdmin) return;
+    
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const wb = XLSX.read(event.target.result);
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const data = XLSX.utils.sheet_to_json(ws);
+        
+        for (const row of data) {
+          const name = row.Name || row.name || '';
+          const number = String(row['Employee Number'] || row.number || row.Number || '');
+          
+          if (!name || !number) continue;
+          
+          const exists = employees.some(e => e.number === number);
+          if (exists) continue;
+          
+          let processedName = name.trim();
+          if (processedName.includes(',')) {
+            const parts = processedName.split(',').map(part => part.trim());
+            if (parts.length === 2) {
+              processedName = `${parts[1]} ${parts[0]}`;
+            }
+          }
+          
+          await supabase.from('employees').insert({
+            id: Date.now() + Math.random(),
+            name: processedName,
+            number: number
+          });
+        }
+        
+        loadData();
+        alert(`Import successful!`);
+      } catch (error) {
+        alert(`Import error: ${error.message}`);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  // Committee functions
   const addCommittee = async () => {
-    if (newCommitteeName.trim() && newCommitteeChair.trim() && newCommitteePassword.trim()) {
-      // Validate committee name
+    if (!isAdmin) return;
+    
+    if (newCommitteeName.trim() && newCommitteeChair.trim()) {
       if (!/^[a-zA-Z0-9\s&'-]+$/.test(newCommitteeName.trim())) {
         alert('Committee name can only contain letters, numbers, spaces, and basic punctuation.');
         return;
       }
       
-      // Validate chair name
       if (!/^[a-zA-Z\s'-]+$/.test(newCommitteeChair.trim())) {
         alert('Chair name can only contain letters, spaces, hyphens, and apostrophes.');
-        return;
-      }
-      
-      // Validate password strength (at least 6 characters)
-      if (newCommitteePassword.trim().length < 6) {
-        alert('Password must be at least 6 characters long.');
         return;
       }
       
@@ -230,81 +316,50 @@ export default function App() {
         id: Date.now(),
         name: newCommitteeName.trim(),
         chair: newCommitteeChair.trim(),
-        password: newCommitteePassword.trim() // TODO: Hash this in Phase 2
+        password: '' // No longer used with auth
       });
+      
       setNewCommitteeName('');
       setNewCommitteeChair('');
-      setNewCommitteePassword('');
       loadData();
     } else {
       alert('Fill all fields.');
     }
   };
 
-  const handleFileImport = async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-    try {
-      const data = await file.arrayBuffer();
-      const workbook = XLSX.read(data);
-      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-      const jsonData = XLSX.utils.sheet_to_json(worksheet);
-      
-      if (jsonData.length === 0) {
-        alert('No data found in the file. Please check the file format.');
-        event.target.value = '';
-        return;
-      }
-      
-      const importedEmployees = [];
-      let skipped = 0;
-      for (const row of jsonData) {
-        const number = String(row['Employee Number'] || row['Number'] || '').trim();
-        let name = String(row['Employee Name'] || row['Name'] || '').trim();
-        if (name.includes(',')) {
-          const parts = name.split(',').map(part => part.trim());
-          if (parts.length === 2) {
-            name = `${parts[1]} ${parts[0]}`;
-          }
-        }
-        if (number && name) {
-          const exists = employees.some(e => e.number === number);
-          if (!exists) {
-            importedEmployees.push({
-              id: Date.now() + importedEmployees.length,
-              name: name,
-              number: number
-            });
-          } else {
-            skipped++;
-          }
-        }
-      }
-      if (importedEmployees.length > 0) {
-        await supabase.from('employees').insert(importedEmployees);
-        alert(`Imported ${importedEmployees.length} employees!${skipped > 0 ? ` (${skipped} skipped)` : ''}`);
-        loadData();
-      } else if (skipped > 0) {
-        alert(`All ${skipped} employees already exist in the system.`);
-      } else {
-        alert('No valid employee data found. Please check that your file has "Employee Number" and "Employee Name" columns.');
-      }
-    } catch (error) {
-      console.error('Import error details:', error);
-      alert(`Error reading file: ${error.message || 'Unknown error'}. Please check the console for details.`);
+  const deleteCommittee = async (id) => {
+    if (!isAdmin) return;
+    if (confirm('Delete this committee?')) {
+      await supabase.from('committees').delete().eq('id', id);
+      loadData();
     }
-    event.target.value = '';
   };
 
+  const resetAllData = async () => {
+    if (!isAdmin) return;
+    if (confirm('DELETE ALL DATA? This cannot be undone!')) {
+      if (confirm('Are you ABSOLUTELY SURE? All time entries, employees, and committees will be permanently deleted!')) {
+        await Promise.all([
+          supabase.from('time_entries').delete().neq('id', 0),
+          supabase.from('employees').delete().neq('id', 0),
+          supabase.from('committees').delete().neq('id', 0)
+        ]);
+        loadData();
+        alert('All data deleted.');
+      }
+    }
+  };
+
+  // Volunteer login
   const handleLogin = () => {
     if (!loginInput.trim()) return;
     
-    // Sanitize input
     const input = loginInput.trim().toLowerCase().replace(/[<>]/g, '');
     
     const employee = employees.find(e => 
       e.number.toLowerCase() === input || e.name.toLowerCase() === input
     );
+    
     if (employee) {
       setLoggedInEmployee(employee);
       setLoginInput('');
@@ -314,34 +369,76 @@ export default function App() {
     }
   };
 
-  const handleAdminLogin = () => {
-    if (adminPassword === ADMIN_PASSWORD) {
-      setIsAdminAuthenticated(true);
-      setLoggedInCommittee(null);
-      setAdminPassword('');
-    } else {
-      const committee = committees.find(c => c.password === adminPassword);
-      if (committee) {
-        setIsAdminAuthenticated(true);
-        setLoggedInCommittee(committee);
-        setAdminPassword('');
-      } else {
-        alert('Incorrect password');
-        setAdminPassword('');
-      }
+  // Clock in/out
+  const clockIn = async () => {
+    if (!loggedInEmployee || !selectedCommittee) return;
+    
+    const committee = committees.find(c => c.id === parseInt(selectedCommittee));
+    if (!committee) return;
+    
+    const alreadyClockedIn = timeEntries.some(e => 
+      e.employee_id === loggedInEmployee.id && !e.clock_out
+    );
+    
+    if (alreadyClockedIn) {
+      alert('Already clocked in!');
+      return;
+    }
+    
+    await supabase.from('time_entries').insert({
+      id: Date.now(),
+      employee_id: loggedInEmployee.id,
+      employee_name: loggedInEmployee.name,
+      employee_number: loggedInEmployee.number,
+      committee_id: committee.id,
+      committee_name: committee.name,
+      clock_in: new Date().toISOString(),
+      status: 'pending'
+    });
+    
+    setLoggedInEmployee(null);
+    setSelectedCommittee('');
+    loadData();
+  };
+
+  const clockOut = async () => {
+    if (!loggedInEmployee) return;
+    
+    const lastEntry = timeEntries
+      .filter(e => e.employee_id === loggedInEmployee.id && !e.clock_out)
+      .sort((a, b) => new Date(b.clock_in) - new Date(a.clock_in))[0];
+    
+    if (lastEntry) {
+      const sanitizedNotes = clockOutNotes.trim().replace(/[<>]/g, '');
+      
+      await supabase.from('time_entries')
+        .update({
+          clock_out: new Date().toISOString(),
+          notes: sanitizedNotes
+        })
+        .eq('id', lastEntry.id);
+      
+      setClockOutNotes('');
+      setLoggedInEmployee(null);
+      setSelectedCommittee('');
+      loadData();
     }
   };
 
-  const approveEntry = async (entryId) => {
-    await supabase.from('time_entries').update({ status: 'approved' }).eq('id', entryId);
+  // Approval functions
+  const approveEntry = async (id) => {
+    if (!isAdmin && !isChair) return;
+    await supabase.from('time_entries').update({ status: 'approved' }).eq('id', id);
     loadData();
   };
 
-  const rejectEntry = async (entryId) => {
-    await supabase.from('time_entries').update({ status: 'rejected' }).eq('id', entryId);
+  const rejectEntry = async (id) => {
+    if (!isAdmin && !isChair) return;
+    await supabase.from('time_entries').update({ status: 'rejected' }).eq('id', id);
     loadData();
   };
 
+  // Edit functions
   const startEditEntry = (entry) => {
     setEditingEntry(entry);
     setEditClockIn(new Date(entry.clock_in).toISOString().slice(0, 16));
@@ -357,259 +454,139 @@ export default function App() {
   };
 
   const saveEdit = async () => {
-    if (!editClockIn) {
-      alert('Clock in time is required');
-      return;
-    }
+    if (!editingEntry) return;
     
     const clockInDate = new Date(editClockIn);
     const clockOutDate = editClockOut ? new Date(editClockOut) : null;
     
     if (clockOutDate && clockOutDate <= clockInDate) {
-      alert('Clock out time must be after clock in time');
+      alert('Clock out must be after clock in!');
       return;
     }
-
-    await supabase.from('time_entries').update({
-      clock_in: clockInDate.toISOString(),
-      clock_out: clockOutDate ? clockOutDate.toISOString() : null,
-      notes: editNotes.trim()
-    }).eq('id', editingEntry.id);
+    
+    await supabase.from('time_entries')
+      .update({
+        clock_in: clockInDate.toISOString(),
+        clock_out: clockOutDate ? clockOutDate.toISOString() : null,
+        notes: editNotes
+      })
+      .eq('id', editingEntry.id);
     
     cancelEdit();
     loadData();
   };
 
-  const deleteEntry = async (entryId) => {
-    if (confirm('Are you sure you want to delete this time entry? This cannot be undone.')) {
-      await supabase.from('time_entries').delete().eq('id', entryId);
+  const deleteEntry = async (id) => {
+    if (!isAdmin && !isChair) return;
+    if (confirm('Delete this entry?')) {
+      await supabase.from('time_entries').delete().eq('id', id);
       loadData();
     }
   };
 
+  // Bulk operations
   const toggleEntrySelection = (entryId) => {
-    setSelectedEntries(prev => 
-      prev.includes(entryId) 
+    setSelectedEntries(prev =>
+      prev.includes(entryId)
         ? prev.filter(id => id !== entryId)
         : [...prev, entryId]
     );
   };
 
-  const toggleSelectAll = (committeeEntries) => {
-    const pendingIds = committeeEntries
-      .filter(e => e.status === 'pending')
+  const toggleSelectAll = (committeeId) => {
+    const pendingIds = timeEntries
+      .filter(e => e.committee_id === committeeId && e.status === 'pending')
       .map(e => e.id);
     
-    if (pendingIds.every(id => selectedEntries.includes(id))) {
-      // Deselect all
+    const allSelected = pendingIds.every(id => selectedEntries.includes(id));
+    
+    if (allSelected) {
       setSelectedEntries(prev => prev.filter(id => !pendingIds.includes(id)));
     } else {
-      // Select all pending
       setSelectedEntries(prev => [...new Set([...prev, ...pendingIds])]);
     }
   };
 
   const bulkApprove = async () => {
-    if (selectedEntries.length === 0) {
-      alert('No entries selected');
-      return;
-    }
-    if (confirm(`Approve ${selectedEntries.length} selected entries?`)) {
-      for (const entryId of selectedEntries) {
-        await supabase.from('time_entries').update({ status: 'approved' }).eq('id', entryId);
-      }
-      setSelectedEntries([]);
-      loadData();
-    }
-  };
-
-  const bulkReject = async () => {
-    if (selectedEntries.length === 0) {
-      alert('No entries selected');
-      return;
-    }
-    if (confirm(`Reject ${selectedEntries.length} selected entries?`)) {
-      for (const entryId of selectedEntries) {
-        await supabase.from('time_entries').update({ status: 'rejected' }).eq('id', entryId);
-      }
-      setSelectedEntries([]);
-      loadData();
-    }
-  };
-
-  const exportCommitteeReport = (committeeId) => {
-    const committee = committees.find(c => c.id === committeeId);
-    if (!committee) return;
-
-    const committeeEntries = timeEntries.filter(e => e.committee_id === committeeId && e.clock_out);
+    if (selectedEntries.length === 0) return;
+    if (!confirm(`Approve ${selectedEntries.length} entries?`)) return;
     
-    if (committeeEntries.length === 0) {
-      alert('No completed time entries to export.');
-      return;
+    for (const id of selectedEntries) {
+      await supabase.from('time_entries').update({ status: 'approved' }).eq('id', id);
     }
-
-    const wb = XLSX.utils.book_new();
-    const data = committeeEntries.map(entry => ({
-      'Employee Number': entry.employee_number,
-      'Employee Name': entry.employee_name,
-      'Date': new Date(entry.clock_in).toLocaleDateString('en-US'),
-      'Clock In': new Date(entry.clock_in).toLocaleTimeString('en-US'),
-      'Clock Out': new Date(entry.clock_out).toLocaleTimeString('en-US'),
-      'Hours': calculateHours(entry.clock_in, entry.clock_out).toFixed(2),
-      'Status': entry.status || 'pending',
-      'Notes': entry.notes || ''
-    }));
-
-    const ws = XLSX.utils.json_to_sheet(data);
-    XLSX.utils.book_append_sheet(wb, ws, 'Time Entries');
     
-    const today = new Date().toLocaleDateString('en-US').replace(/\//g, '-');
-    XLSX.writeFile(wb, `${committee.name}-Report-${today}.xlsx`);
-    alert('✅ Report downloaded! Check your downloads folder or tap the download arrow in your browser.');
-  };
-
-  const approveAllForWeek = async (weekStart, weekEnd, committeeId = null) => {
-    const entriesToApprove = timeEntries.filter(entry => {
-      const entryDate = new Date(entry.clock_in);
-      const matchesWeek = entryDate >= weekStart && entryDate <= weekEnd && entry.clock_out;
-      const matchesCommittee = committeeId ? entry.committee_id === committeeId : true;
-      return matchesWeek && matchesCommittee && entry.status === 'pending';
-    });
-    for (const entry of entriesToApprove) {
-      await supabase.from('time_entries').update({ status: 'approved' }).eq('id', entry.id);
-    }
+    setSelectedEntries([]);
     loadData();
   };
 
-  const getWeekDates = (date) => {
-    const d = new Date(date);
-    const day = d.getDay();
-    const diff = d.getDate() - day;
-    const sunday = new Date(d.setDate(diff));
-    const saturday = new Date(sunday);
-    saturday.setDate(sunday.getDate() + 6);
-    return { start: sunday, end: saturday };
-  };
-
-  const exportWeeklyReports = () => {
-    const now = new Date();
-    const week = getWeekDates(now);
-    exportReportsByDateRange(week.start, week.end, 'Weekly');
-    alert('✅ Weekly report downloaded! Check your downloads folder or tap the download arrow in your browser.');
-  };
-
-  const exportReportsByDateRange = (startDate, endDate, reportType = 'Custom') => {
-    const rangeEntries = timeEntries.filter(e => {
-      const entryDate = new Date(e.clock_in);
-      return entryDate >= startDate && entryDate <= endDate && e.clock_out;
-    });
-    if (rangeEntries.length === 0) {
-      alert('No entries found.');
-      return;
+  const bulkReject = async () => {
+    if (selectedEntries.length === 0) return;
+    if (!confirm(`Reject ${selectedEntries.length} entries?`)) return;
+    
+    for (const id of selectedEntries) {
+      await supabase.from('time_entries').update({ status: 'rejected' }).eq('id', id);
     }
-    const wb = XLSX.utils.book_new();
-    const masterData = rangeEntries.map(entry => ({
+    
+    setSelectedEntries([]);
+    loadData();
+  };
+
+  // Export functions
+  const exportCommitteeReport = (committeeId) => {
+    const committee = committees.find(c => c.id === committeeId);
+    if (!committee) return;
+    
+    const committeeEntries = timeEntries.filter(e => e.committee_id === committeeId && e.clock_out);
+    
+    const data = committeeEntries.map(entry => ({
       'Employee Number': entry.employee_number,
       'Employee Name': entry.employee_name,
-      'Committee': entry.committee_name,
-      'Date': new Date(entry.clock_in).toLocaleDateString('en-US'),
-      'Clock In': new Date(entry.clock_in).toLocaleTimeString('en-US'),
-      'Clock Out': new Date(entry.clock_out).toLocaleTimeString('en-US'),
-      'Hours': calculateHours(entry.clock_in, entry.clock_out).toFixed(2),
-      'Status': entry.status || 'pending',
+      'Date': new Date(entry.clock_in).toLocaleDateString(),
+      'Clock In': new Date(entry.clock_in).toLocaleTimeString(),
+      'Clock Out': new Date(entry.clock_out).toLocaleTimeString(),
+      'Hours': ((new Date(entry.clock_out) - new Date(entry.clock_in)) / 3600000).toFixed(2),
+      'Status': entry.status,
       'Notes': entry.notes || ''
     }));
-    const masterWs = XLSX.utils.json_to_sheet(masterData);
-    XLSX.utils.book_append_sheet(wb, masterWs, 'Master Report');
-    committees.forEach(committee => {
-      const committeeEntries = rangeEntries.filter(e => e.committee_id === committee.id);
-      if (committeeEntries.length > 0) {
-        const committeeData = committeeEntries.map(entry => ({
-          'Employee Number': entry.employee_number,
-          'Employee Name': entry.employee_name,
-          'Date': new Date(entry.clock_in).toLocaleDateString('en-US'),
-          'Clock In': new Date(entry.clock_in).toLocaleTimeString('en-US'),
-          'Clock Out': new Date(entry.clock_out).toLocaleTimeString('en-US'),
-          'Hours': calculateHours(entry.clock_in, entry.clock_out).toFixed(2),
-          'Status': entry.status || 'pending',
-          'Notes': entry.notes || ''
-        }));
-        const committeeWs = XLSX.utils.json_to_sheet(committeeData);
-        XLSX.utils.book_append_sheet(wb, committeeWs, committee.name.substring(0, 31));
-      }
-    });
-    const startStr = startDate.toLocaleDateString('en-US').replace(/\//g, '-');
-    const endStr = endDate.toLocaleDateString('en-US').replace(/\//g, '-');
-    XLSX.writeFile(wb, `${reportType}-Report-${startStr}-to-${endStr}.xlsx`);
     
-    // Don't show alert here if called from other functions that show their own alert
-    if (reportType === 'Custom') {
-      alert('✅ Custom report downloaded! Check your downloads folder or tap the download arrow in your browser.');
-    }
-  };
-
-  const handleDateRangeExport = () => {
-    if (!exportStartDate || !exportEndDate) {
-      alert('Select both dates.');
-      return;
-    }
-    const start = new Date(exportStartDate);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(exportEndDate);
-    end.setHours(23, 59, 59, 999);
-    if (start > end) {
-      alert('Start must be before end.');
-      return;
-    }
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, committee.name.slice(0, 31));
+    XLSX.writeFile(wb, `${committee.name.replace(/[^a-z0-9]/gi, '_')}_report.xlsx`);
     
-    if (loggedInCommittee) {
-      // Committee chair export - only their committee
-      exportCommitteeReportByDateRange(loggedInCommittee.id, start, end);
-    } else {
-      // Admin export - all committees
-      exportReportsByDateRange(start, end, 'Custom');
-    }
-    
-    setShowDateRangeExport(false);
-    setExportStartDate('');
-    setExportEndDate('');
+    alert('✅ Report downloaded! Check your downloads folder or tap the download arrow in your browser.');
   };
 
   const exportCommitteeReportByDateRange = (committeeId, startDate, endDate) => {
     const committee = committees.find(c => c.id === committeeId);
     if (!committee) return;
-
-    const committeeEntries = timeEntries.filter(e => {
-      const entryDate = new Date(e.clock_in);
-      return e.committee_id === committeeId && 
-             e.clock_out && 
-             entryDate >= startDate && 
-             entryDate <= endDate;
+    
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59);
+    
+    const rangeEntries = timeEntries.filter(e => {
+      const clockIn = new Date(e.clock_in);
+      return e.committee_id === committeeId && e.clock_out &&
+             clockIn >= start && clockIn <= end;
     });
     
-    if (committeeEntries.length === 0) {
-      alert('No completed time entries found for the selected date range.');
-      return;
-    }
-
-    const wb = XLSX.utils.book_new();
-    const data = committeeEntries.map(entry => ({
+    const data = rangeEntries.map(entry => ({
       'Employee Number': entry.employee_number,
       'Employee Name': entry.employee_name,
-      'Date': new Date(entry.clock_in).toLocaleDateString('en-US'),
-      'Clock In': new Date(entry.clock_in).toLocaleTimeString('en-US'),
-      'Clock Out': new Date(entry.clock_out).toLocaleTimeString('en-US'),
-      'Hours': calculateHours(entry.clock_in, entry.clock_out).toFixed(2),
-      'Status': entry.status || 'pending',
+      'Date': new Date(entry.clock_in).toLocaleDateString(),
+      'Clock In': new Date(entry.clock_in).toLocaleTimeString(),
+      'Clock Out': new Date(entry.clock_out).toLocaleTimeString(),
+      'Hours': ((new Date(entry.clock_out) - new Date(entry.clock_in)) / 3600000).toFixed(2),
+      'Status': entry.status,
       'Notes': entry.notes || ''
     }));
-
-    const ws = XLSX.utils.json_to_sheet(data);
-    XLSX.utils.book_append_sheet(wb, ws, 'Time Entries');
     
-    const startStr = startDate.toLocaleDateString('en-US').replace(/\//g, '-');
-    const endStr = endDate.toLocaleDateString('en-US').replace(/\//g, '-');
-    XLSX.writeFile(wb, `${committee.name}-Report-${startStr}-to-${endStr}.xlsx`);
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, committee.name.slice(0, 31));
+    XLSX.writeFile(wb, `${committee.name.replace(/[^a-z0-9]/gi, '_')}_${startDate}_to_${endDate}.xlsx`);
+    
     alert('✅ Report downloaded! Check your downloads folder or tap the download arrow in your browser.');
   };
 
@@ -622,166 +599,696 @@ export default function App() {
 
   const getCurrentQuarterDates = () => {
     const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
-    
-    // Determine which quarter we're in (Jan-Mar, Apr-Jun, Jul-Sep, Oct-Dec)
-    const quarterStartMonth = Math.floor(currentMonth / 3) * 3;
-    const start = new Date(currentYear, quarterStartMonth, 1);
-    const end = new Date(currentYear, quarterStartMonth + 3, 0, 23, 59, 59);
-    
+    const month = now.getMonth();
+    const year = now.getFullYear();
+    const quarter = Math.floor(month / 3);
+    const start = new Date(year, quarter * 3, 1);
+    const end = new Date(year, quarter * 3 + 3, 0, 23, 59, 59);
     return { start, end };
   };
 
   const exportMonthlyReport = () => {
     const { start, end } = getCurrentMonthDates();
-    if (loggedInCommittee) {
-      exportCommitteeReportByDateRange(loggedInCommittee.id, start, end);
-    } else {
-      exportReportsByDateRange(start, end, 'Monthly');
+    if (isChair && chairCommittee) {
+      exportCommitteeReportByDateRange(
+        chairCommittee.id,
+        start.toISOString().split('T')[0],
+        end.toISOString().split('T')[0]
+      );
+    } else if (isAdmin) {
+      exportReportsByDateRange(
+        start.toISOString().split('T')[0],
+        end.toISOString().split('T')[0]
+      );
     }
-    alert('✅ Monthly report downloaded! Check your downloads folder or tap the download arrow in your browser.');
   };
 
   const exportQuarterlyReport = () => {
     const { start, end } = getCurrentQuarterDates();
-    if (loggedInCommittee) {
-      exportCommitteeReportByDateRange(loggedInCommittee.id, start, end);
-    } else {
-      exportReportsByDateRange(start, end, 'Quarterly');
+    if (isChair && chairCommittee) {
+      exportCommitteeReportByDateRange(
+        chairCommittee.id,
+        start.toISOString().split('T')[0],
+        end.toISOString().split('T')[0]
+      );
+    } else if (isAdmin) {
+      exportReportsByDateRange(
+        start.toISOString().split('T')[0],
+        end.toISOString().split('T')[0]
+      );
     }
-    alert('✅ Quarterly report downloaded! Check your downloads folder or tap the download arrow in your browser.');
   };
 
-  const clockIn = async () => {
-    if (!loggedInEmployee || !selectedCommittee) {
-      alert('Select committee.');
+  const exportWeeklyReports = () => {
+    const now = new Date();
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - now.getDay());
+    startOfWeek.setHours(0, 0, 0, 0);
+    
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 6);
+    endOfWeek.setHours(23, 59, 59, 999);
+    
+    const wb = XLSX.utils.book_new();
+    
+    committees.forEach(committee => {
+      const committeeEntries = timeEntries.filter(e => {
+        const clockIn = new Date(e.clock_in);
+        return e.committee_id === committee.id && e.clock_out &&
+               clockIn >= startOfWeek && clockIn <= endOfWeek;
+      });
+      
+      if (committeeEntries.length > 0) {
+        const data = committeeEntries.map(entry => ({
+          'Employee Number': entry.employee_number,
+          'Employee Name': entry.employee_name,
+          'Date': new Date(entry.clock_in).toLocaleDateString(),
+          'Clock In': new Date(entry.clock_in).toLocaleTimeString(),
+          'Clock Out': new Date(entry.clock_out).toLocaleTimeString(),
+          'Hours': ((new Date(entry.clock_out) - new Date(entry.clock_in)) / 3600000).toFixed(2),
+          'Status': entry.status,
+          'Notes': entry.notes || ''
+        }));
+        
+        const ws = XLSX.utils.json_to_sheet(data);
+        XLSX.utils.book_append_sheet(wb, ws, committee.name.slice(0, 31));
+      }
+    });
+    
+    XLSX.writeFile(wb, `weekly_report_${startOfWeek.toISOString().split('T')[0]}.xlsx`);
+    alert('✅ Report downloaded! Check your downloads folder or tap the download arrow in your browser.');
+  };
+
+  const exportReportsByDateRange = (startDate, endDate) => {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59);
+    
+    const wb = XLSX.utils.book_new();
+    
+    const allEntries = [];
+    
+    committees.forEach(committee => {
+      const committeeEntries = timeEntries.filter(e => {
+        const clockIn = new Date(e.clock_in);
+        return e.committee_id === committee.id && e.clock_out &&
+               clockIn >= start && clockIn <= end;
+      });
+      
+      if (committeeEntries.length > 0) {
+        const committeeData = committeeEntries.map(entry => ({
+          'Employee Number': entry.employee_number,
+          'Employee Name': entry.employee_name,
+          'Date': new Date(entry.clock_in).toLocaleDateString(),
+          'Clock In': new Date(entry.clock_in).toLocaleTimeString(),
+          'Clock Out': new Date(entry.clock_out).toLocaleTimeString(),
+          'Hours': ((new Date(entry.clock_out) - new Date(entry.clock_in)) / 3600000).toFixed(2),
+          'Status': entry.status,
+          'Notes': entry.notes || ''
+        }));
+        
+        allEntries.push(...committeeData.map(d => ({ Committee: committee.name, ...d })));
+        
+        const ws = XLSX.utils.json_to_sheet(committeeData);
+        XLSX.utils.book_append_sheet(wb, ws, committee.name.slice(0, 31));
+      }
+    });
+    
+    if (allEntries.length > 0) {
+      const masterWs = XLSX.utils.json_to_sheet(allEntries);
+      XLSX.utils.book_append_sheet(wb, masterWs, 'All Committees', 0);
+    }
+    
+    XLSX.writeFile(wb, `report_${startDate}_to_${endDate}.xlsx`);
+    setShowDateRangeExport(false);
+    alert('✅ Report downloaded! Check your downloads folder or tap the download arrow in your browser.');
+  };
+
+  const handleDateRangeExport = () => {
+    if (!exportStartDate || !exportEndDate) {
+      alert('Please select both start and end dates');
       return;
     }
-    const committee = committees.find(c => c.id === parseInt(selectedCommittee));
-    await supabase.from('time_entries').insert({
-      id: Date.now(),
-      employee_id: loggedInEmployee.id,
-      employee_name: loggedInEmployee.name,
-      employee_number: loggedInEmployee.number,
-      committee_id: committee.id,
-      committee_name: committee.name,
-      clock_in: new Date().toISOString(),
-      clock_out: null,
-      status: 'pending',
-      notes: ''
-    });
-    setTimeout(() => {
-      setLoggedInEmployee(null);
-      setSelectedCommittee('');
-      loadData();
-    }, 1500);
-  };
-
-  const clockOut = async () => {
-    if (!loggedInEmployee) return;
-    const lastEntry = timeEntries
-      .filter(e => e.employee_id === loggedInEmployee.id && !e.clock_out)
-      .sort((a, b) => new Date(b.clock_in) - new Date(a.clock_in))[0];
-    if (lastEntry) {
-      // Sanitize notes (remove HTML tags and dangerous characters)
-      const sanitizedNotes = clockOutNotes.trim().replace(/[<>]/g, '');
-      
-      await supabase.from('time_entries').update({
-        clock_out: new Date().toISOString(),
-        notes: sanitizedNotes
-      }).eq('id', lastEntry.id);
-      setClockOutNotes('');
-      setLoggedInEmployee(null);
-      setSelectedCommittee('');
-      loadData();
+    
+    if (isChair && chairCommittee) {
+      exportCommitteeReportByDateRange(chairCommittee.id, exportStartDate, exportEndDate);
+    } else {
+      exportReportsByDateRange(exportStartDate, exportEndDate);
     }
   };
 
-  const calculateHours = (clockIn, clockOut) => {
-    if (!clockOut) return 0;
-    return (new Date(clockOut) - new Date(clockIn)) / 3600000;
-  };
-
-  const formatHours = (hours) => {
-    if (hours === 0) return 'Clocked In';
-    const h = Math.floor(hours);
-    const m = Math.floor((hours % 1) * 60);
-    return `${h}h ${m}m`;
-  };
-
-  const getEmployeeYTDHours = (employeeId) => {
-    const fiscalYear = getCurrentFiscalYear();
+  const getTotalHoursForEmployee = (employeeId) => {
+    const { start, end } = getCurrentFiscalYear();
     return timeEntries
       .filter(e => e.employee_id === employeeId && e.clock_out && e.status === 'approved' &&
-        new Date(e.clock_in) >= fiscalYear.start && new Date(e.clock_in) <= fiscalYear.end)
-      .reduce((total, entry) => total + calculateHours(entry.clock_in, entry.clock_out), 0);
+              new Date(e.clock_in) >= start && new Date(e.clock_in) <= end)
+      .reduce((sum, e) => sum + ((new Date(e.clock_out) - new Date(e.clock_in)) / 3600000), 0);
   };
 
-  const isEmployeeClockedIn = () => {
-    if (!loggedInEmployee) return false;
-    return timeEntries.some(e => e.employee_id === loggedInEmployee.id && !e.clock_out);
+  const isClockedIn = () => {
+    return loggedInEmployee && timeEntries.some(e => e.employee_id === loggedInEmployee.id && !e.clock_out);
   };
 
-  const ytdHours = loggedInEmployee ? getEmployeeYTDHours(loggedInEmployee.id) : 0;
-  const fiscalYear = getCurrentFiscalYear();
+  // Render
   if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
-        <Clock className="w-16 h-16 text-indigo-600 animate-pulse" />
-      </div>
-    );
+    return <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+      <div className="text-2xl text-indigo-600">Loading...</div>
+    </div>;
   }
 
-  if (showAdmin && !isAdminAuthenticated) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-6">
-        <div className="bg-white rounded-lg shadow-2xl p-8 w-full max-w-md">
-          <Settings className="w-16 h-16 text-indigo-600 mx-auto mb-4" />
-          <h1 className="text-3xl font-bold text-center mb-8">Admin Panel</h1>
-          <input
-            type="password"
-            value={adminPassword}
-            onChange={(e) => setAdminPassword(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleAdminLogin()}
-            placeholder="Password"
-            className="w-full px-4 py-3 border-2 rounded-lg mb-4"
-            autoFocus
-          />
-          <button onClick={handleAdminLogin} className="w-full px-6 py-3 bg-indigo-600 text-white rounded-lg mb-2">
-            Login
-          </button>
-          <button onClick={() => setShowAdmin(false)} className="w-full px-6 py-3 bg-gray-600 text-white rounded-lg">
-            Back
-          </button>
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="bg-white rounded-lg shadow-2xl p-8 mb-8">
+          <div className="flex justify-between items-center mb-6">
+            <div>
+              <h1 className="text-3xl font-bold text-center mb-2">Groton Sportsmen's Club</h1>
+              <div className="text-2xl font-semibold text-center text-indigo-600 mb-8">
+                {currentTime.toLocaleTimeString()}
+              </div>
+            </div>
+            {(isAdmin || isChair) && (
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+              >
+                <LogOut size={20} />
+                Logout
+              </button>
+            )}
+          </div>
+
+          {/* Auth Modal */}
+          {showAuthModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-lg p-8 max-w-md w-full">
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-2xl font-bold">
+                    {authMode === 'admin' ? 'Admin Login' : 'Committee Chair Login'}
+                  </h2>
+                  <button onClick={() => setShowAuthModal(false)}>
+                    <X size={24} />
+                  </button>
+                </div>
+                
+                <form onSubmit={handleAuth}>
+                  <input
+                    type="email"
+                    placeholder="Email"
+                    value={authEmail}
+                    onChange={(e) => setAuthEmail(e.target.value)}
+                    className="w-full px-4 py-3 border-2 rounded-lg mb-4"
+                    required
+                  />
+                  <input
+                    type="password"
+                    placeholder="Password"
+                    value={authPassword}
+                    onChange={(e) => setAuthPassword(e.target.value)}
+                    className="w-full px-4 py-3 border-2 rounded-lg mb-4"
+                    required
+                  />
+                  
+                  {authError && (
+                    <div className="text-red-600 mb-4">{authError}</div>
+                  )}
+                  
+                  <button
+                    type="submit"
+                    className="w-full px-6 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700"
+                  >
+                    Login
+                  </button>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* Volunteer Section */}
+          {!loggedInEmployee && !isAdmin && !isChair && (
+            <div className="space-y-4">
+              <div className="flex gap-4">
+                <input
+                  value={loginInput}
+                  onChange={(e) => setLoginInput(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
+                  placeholder="Name or employee number"
+                  className="flex-1 px-4 py-3 border-2 rounded-lg text-lg"
+                />
+                <button
+                  onClick={handleLogin}
+                  className="px-8 py-3 bg-indigo-600 text-white rounded-lg text-lg font-semibold flex items-center gap-2 hover:bg-indigo-700"
+                >
+                  <User size={24} />
+                  Login
+                </button>
+              </div>
+              
+              <div className="flex gap-4">
+                <button
+                  onClick={() => openAuthModal('chair')}
+                  className="flex-1 px-6 py-3 bg-green-600 text-white rounded-lg text-lg font-semibold flex items-center justify-center gap-2 hover:bg-green-700"
+                >
+                  <Building2 size={24} />
+                  Committee Chair Login
+                </button>
+                <button
+                  onClick={() => openAuthModal('admin')}
+                  className="flex-1 px-6 py-3 bg-purple-600 text-white rounded-lg text-lg font-semibold flex items-center justify-center gap-2 hover:bg-purple-700"
+                >
+                  <Settings size={24} />
+                  Admin Panel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Logged in employee */}
+          {loggedInEmployee && !isClockedIn() && (
+            <div className="space-y-4">
+              <div className="text-xl font-semibold text-center">
+                Welcome, {loggedInEmployee.name}!
+              </div>
+              <select
+                value={selectedCommittee}
+                onChange={(e) => setSelectedCommittee(e.target.value)}
+                className="w-full px-4 py-3 border-2 rounded-lg text-lg"
+              >
+                <option value="">Select Committee</option>
+                {committees.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+              <button
+                onClick={clockIn}
+                disabled={!selectedCommittee}
+                className="w-full px-6 py-4 bg-green-600 text-white rounded-lg text-lg font-semibold disabled:bg-gray-400"
+              >
+                Clock In
+              </button>
+              <div className="text-center text-sm text-gray-600">
+                YTD Hours: {getTotalHoursForEmployee(loggedInEmployee.id).toFixed(2)}
+              </div>
+            </div>
+          )}
+
+          {/* Clocked in employee */}
+          {loggedInEmployee && isClockedIn() && (
+            <div className="space-y-4">
+              <div className="text-xl font-semibold text-center text-green-600">
+                Clocked In: {loggedInEmployee.name}
+              </div>
+              <textarea
+                value={clockOutNotes}
+                onChange={(e) => setClockOutNotes(e.target.value)}
+                placeholder="What did you work on today?"
+                className="w-full px-4 py-3 border-2 rounded-lg resize-none"
+                rows="3"
+              />
+              <button
+                onClick={clockOut}
+                className="w-full px-6 py-4 bg-red-600 text-white rounded-lg text-lg font-semibold"
+              >
+                Clock Out
+              </button>
+            </div>
+          )}
         </div>
-      </div>
-    );
-  }
 
-  if (showAdmin) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
+        {/* Admin Panel */}
+        {isAdmin && (
+          <div className="bg-white rounded-lg shadow-2xl p-8 mb-8">
+            <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
+              <Settings size={28} />
+              Admin Panel
+            </h2>
+
+            {/* Management Tabs */}
+            <div className="space-y-8">
+              {/* Employees */}
+              <div>
+                <h3 className="text-xl font-bold mb-4">Employees</h3>
+                <div className="flex gap-4 mb-4">
+                  <input
+                    value={newEmployeeName}
+                    onChange={(e) => setNewEmployeeName(e.target.value)}
+                    placeholder="Name"
+                    className="flex-1 px-4 py-2 border-2 rounded-lg"
+                  />
+                  <input
+                    value={newEmployeeNumber}
+                    onChange={(e) => setNewEmployeeNumber(e.target.value)}
+                    placeholder="Employee #"
+                    className="w-40 px-4 py-2 border-2 rounded-lg"
+                  />
+                  <button
+                    onClick={addEmployee}
+                    className="px-6 py-2 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700"
+                  >
+                    Add
+                  </button>
+                  <label className="px-6 py-2 bg-blue-600 text-white rounded-lg font-semibold cursor-pointer hover:bg-blue-700 flex items-center gap-2">
+                    <Upload size={20} />
+                    Import
+                    <input
+                      type="file"
+                      accept=".xlsx,.xls,.csv"
+                      onChange={handleFileImport}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+                <div className="max-h-60 overflow-y-auto border-2 rounded-lg">
+                  {employees.map(emp => (
+                    <div key={emp.id} className="flex justify-between p-3 border-b hover:bg-gray-50">
+                      <span>{emp.name} ({emp.number})</span>
+                      <button
+                        onClick={() => deleteEmployee(emp.id)}
+                        className="text-red-600 hover:text-red-800"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Committees */}
+              <div>
+                <h3 className="text-xl font-bold mb-4">Committees</h3>
+                <div className="flex gap-4 mb-4">
+                  <input
+                    value={newCommitteeName}
+                    onChange={(e) => setNewCommitteeName(e.target.value)}
+                    placeholder="Committee Name"
+                    className="flex-1 px-4 py-2 border-2 rounded-lg"
+                  />
+                  <input
+                    value={newCommitteeChair}
+                    onChange={(e) => setNewCommitteeChair(e.target.value)}
+                    placeholder="Chair Name"
+                    className="flex-1 px-4 py-2 border-2 rounded-lg"
+                  />
+                  <button
+                    onClick={addCommittee}
+                    className="px-6 py-2 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700"
+                  >
+                    Add
+                  </button>
+                </div>
+                <div className="max-h-60 overflow-y-auto border-2 rounded-lg">
+                  {committees.map(com => (
+                    <div key={com.id} className="flex justify-between p-3 border-b hover:bg-gray-50">
+                      <span>{com.name} - {com.chair}</span>
+                      <button
+                        onClick={() => deleteCommittee(com.id)}
+                        className="text-red-600 hover:text-red-800"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Danger Zone */}
+              <div className="border-4 border-red-600 rounded-lg p-4">
+                <h3 className="text-xl font-bold text-red-600 mb-4">Danger Zone</h3>
+                <button
+                  onClick={resetAllData}
+                  className="px-6 py-3 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700"
+                >
+                  Reset All Data
+                </button>
+              </div>
+
+              {/* Export */}
+              <div>
+                <h3 className="text-xl font-bold mb-4">Reports</h3>
+                <div className="flex gap-4 flex-wrap">
+                  <button
+                    onClick={exportWeeklyReports}
+                    className="px-6 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 flex items-center gap-2"
+                  >
+                    <Download size={20} />
+                    Export Current Week
+                  </button>
+                  <button
+                    onClick={exportMonthlyReport}
+                    className="px-6 py-3 bg-teal-600 text-white rounded-lg font-semibold hover:bg-teal-700 flex items-center gap-2"
+                  >
+                    <Download size={20} />
+                    Export Current Month
+                  </button>
+                  <button
+                    onClick={exportQuarterlyReport}
+                    className="px-6 py-3 bg-cyan-600 text-white rounded-lg font-semibold hover:bg-cyan-700 flex items-center gap-2"
+                  >
+                    <Download size={20} />
+                    Export Current Quarter
+                  </button>
+                  <button
+                    onClick={() => setShowDateRangeExport(!showDateRangeExport)}
+                    className="px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 flex items-center gap-2"
+                  >
+                    <Calendar size={20} />
+                    Export by Date Range
+                  </button>
+                </div>
+
+                {showDateRangeExport && (
+                  <div className="mt-4 p-4 border-2 rounded-lg">
+                    <div className="flex gap-4 items-center">
+                      <input
+                        type="date"
+                        value={exportStartDate}
+                        onChange={(e) => setExportStartDate(e.target.value)}
+                        className="px-4 py-2 border-2 rounded-lg"
+                      />
+                      <span>to</span>
+                      <input
+                        type="date"
+                        value={exportEndDate}
+                        onChange={(e) => setExportEndDate(e.target.value)}
+                        className="px-4 py-2 border-2 rounded-lg"
+                      />
+                      <button
+                        onClick={handleDateRangeExport}
+                        className="px-6 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700"
+                      >
+                        Export
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Chair Panel */}
+        {isChair && chairCommittee && (
+          <div className="bg-white rounded-lg shadow-2xl p-8">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold">
+                {chairCommittee.name} - Approval Dashboard
+              </h2>
+              <div className="flex gap-4">
+                <button
+                  onClick={() => exportCommitteeReport(chairCommittee.id)}
+                  className="px-6 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 flex items-center gap-2"
+                >
+                  <Download size={20} />
+                  Export All Time Entries
+                </button>
+                <button
+                  onClick={exportMonthlyReport}
+                  className="px-6 py-3 bg-teal-600 text-white rounded-lg font-semibold hover:bg-teal-700 flex items-center gap-2"
+                >
+                  <Download size={20} />
+                  Export Current Month
+                </button>
+                <button
+                  onClick={exportQuarterlyReport}
+                  className="px-6 py-3 bg-cyan-600 text-white rounded-lg font-semibold hover:bg-cyan-700 flex items-center gap-2"
+                >
+                  <Download size={20} />
+                  Export Current Quarter
+                </button>
+                <button
+                  onClick={() => setShowDateRangeExport(!showDateRangeExport)}
+                  className="px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 flex items-center gap-2"
+                >
+                  <Calendar size={20} />
+                  Export by Date Range
+                </button>
+              </div>
+            </div>
+
+            {showDateRangeExport && (
+              <div className="mb-6 p-4 border-2 rounded-lg">
+                <div className="flex gap-4 items-center">
+                  <input
+                    type="date"
+                    value={exportStartDate}
+                    onChange={(e) => setExportStartDate(e.target.value)}
+                    className="px-4 py-2 border-2 rounded-lg"
+                  />
+                  <span>to</span>
+                  <input
+                    type="date"
+                    value={exportEndDate}
+                    onChange={(e) => setExportEndDate(e.target.value)}
+                    className="px-4 py-2 border-2 rounded-lg"
+                  />
+                  <button
+                    onClick={handleDateRangeExport}
+                    className="px-6 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700"
+                  >
+                    Export
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Time entries for chair's committee */}
+            <div>
+              {selectedEntries.length > 0 && (
+                <div className="mb-4 p-4 bg-blue-50 rounded-lg flex justify-between items-center">
+                  <span className="font-semibold">
+                    {selectedEntries.length} entries selected
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={bulkApprove}
+                      className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                    >
+                      Approve Selected
+                    </button>
+                    <button
+                      onClick={bulkReject}
+                      className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                    >
+                      Reject Selected
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="p-3 text-left">
+                        <input
+                          type="checkbox"
+                          onChange={() => toggleSelectAll(chairCommittee.id)}
+                          checked={timeEntries
+                            .filter(e => e.committee_id === chairCommittee.id && e.status === 'pending')
+                            .every(e => selectedEntries.includes(e.id))}
+                        />
+                      </th>
+                      <th className="p-3 text-left">Employee</th>
+                      <th className="p-3 text-left">Date</th>
+                      <th className="p-3 text-left">Clock In</th>
+                      <th className="p-3 text-left">Clock Out</th>
+                      <th className="p-3 text-left">Hours</th>
+                      <th className="p-3 text-left">Status</th>
+                      <th className="p-3 text-left">Notes</th>
+                      <th className="p-3 text-left">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {timeEntries
+                      .filter(e => e.committee_id === chairCommittee.id)
+                      .sort((a, b) => new Date(b.clock_in) - new Date(a.clock_in))
+                      .map(entry => (
+                        <tr key={entry.id} className="border-b hover:bg-gray-50">
+                          <td className="p-3">
+                            {entry.status === 'pending' && (
+                              <input
+                                type="checkbox"
+                                checked={selectedEntries.includes(entry.id)}
+                                onChange={() => toggleEntrySelection(entry.id)}
+                              />
+                            )}
+                          </td>
+                          <td className="p-3">{entry.employee_name}</td>
+                          <td className="p-3">{new Date(entry.clock_in).toLocaleDateString()}</td>
+                          <td className="p-3">{new Date(entry.clock_in).toLocaleTimeString()}</td>
+                          <td className="p-3">
+                            {entry.clock_out ? new Date(entry.clock_out).toLocaleTimeString() : '-'}
+                          </td>
+                          <td className="p-3">
+                            {entry.clock_out 
+                              ? ((new Date(entry.clock_out) - new Date(entry.clock_in)) / 3600000).toFixed(2)
+                              : '-'}
+                          </td>
+                          <td className="p-3">
+                            <span className={`px-2 py-1 rounded ${
+                              entry.status === 'approved' ? 'bg-green-100 text-green-800' :
+                              entry.status === 'rejected' ? 'bg-red-100 text-red-800' :
+                              'bg-yellow-100 text-yellow-800'
+                            }`}>
+                              {entry.status}
+                            </span>
+                          </td>
+                          <td className="p-3">{entry.notes || '-'}</td>
+                          <td className="p-3">
+                            <div className="flex gap-2">
+                              {entry.status === 'pending' && (
+                                <>
+                                  <button
+                                    onClick={() => approveEntry(entry.id)}
+                                    className="text-green-600 hover:text-green-800"
+                                  >
+                                    Approve
+                                  </button>
+                                  <button
+                                    onClick={() => rejectEntry(entry.id)}
+                                    className="text-red-600 hover:text-red-800"
+                                  >
+                                    Reject
+                                  </button>
+                                </>
+                              )}
+                              <button
+                                onClick={() => startEditEntry(entry)}
+                                className="text-blue-600 hover:text-blue-800"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => deleteEntry(entry.id)}
+                                className="text-red-600 hover:text-red-800"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Edit Modal */}
         {editingEntry && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-6 max-w-md mx-4 w-full">
-              <h3 className="text-xl font-bold mb-4">Edit Time Entry</h3>
+            <div className="bg-white rounded-lg p-8 max-w-md w-full">
+              <h2 className="text-2xl font-bold mb-6">Edit Time Entry</h2>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-semibold mb-2">Employee</label>
-                  <p className="px-4 py-2 bg-gray-100 rounded-lg">{editingEntry.employee_name}</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold mb-2">Committee</label>
-                  <p className="px-4 py-2 bg-gray-100 rounded-lg">{editingEntry.committee_name}</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold mb-2">Clock In *</label>
+                  <label className="block text-sm font-semibold mb-2">Clock In</label>
                   <input
                     type="datetime-local"
                     value={editClockIn}
                     onChange={(e) => setEditClockIn(e.target.value)}
-                    className="w-full px-4 py-2 border rounded-lg"
+                    className="w-full px-4 py-2 border-2 rounded-lg"
                   />
                 </div>
                 <div>
@@ -790,7 +1297,7 @@ export default function App() {
                     type="datetime-local"
                     value={editClockOut}
                     onChange={(e) => setEditClockOut(e.target.value)}
-                    className="w-full px-4 py-2 border rounded-lg"
+                    className="w-full px-4 py-2 border-2 rounded-lg"
                   />
                 </div>
                 <div>
@@ -798,615 +1305,26 @@ export default function App() {
                   <textarea
                     value={editNotes}
                     onChange={(e) => setEditNotes(e.target.value)}
-                    className="w-full px-4 py-2 border rounded-lg resize-none"
+                    className="w-full px-4 py-2 border-2 rounded-lg resize-none"
                     rows="3"
                   />
                 </div>
-              </div>
-              <div className="flex gap-2 justify-end mt-6">
-                <button
-                  onClick={cancelEdit}
-                  className="px-4 py-2 bg-gray-300 rounded-lg"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={saveEdit}
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg"
-                >
-                  Save Changes
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {showDateRangeExport && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-6 max-w-md mx-4 w-full">
-              <h3 className="text-xl font-bold mb-4">Export by Date Range</h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-semibold mb-2">Start Date</label>
-                  <input
-                    type="date"
-                    value={exportStartDate}
-                    onChange={(e) => setExportStartDate(e.target.value)}
-                    className="w-full px-4 py-2 border rounded-lg"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold mb-2">End Date</label>
-                  <input
-                    type="date"
-                    value={exportEndDate}
-                    onChange={(e) => setExportEndDate(e.target.value)}
-                    className="w-full px-4 py-2 border rounded-lg"
-                  />
-                </div>
-              </div>
-              <div className="flex gap-2 justify-end mt-6">
-                <button
-                  onClick={() => {
-                    setShowDateRangeExport(false);
-                    setExportStartDate('');
-                    setExportEndDate('');
-                  }}
-                  className="px-4 py-2 bg-gray-300 rounded-lg"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleDateRangeExport}
-                  className="px-4 py-2 bg-emerald-600 text-white rounded-lg"
-                >
-                  Export
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-        
-        <div className="max-w-6xl mx-auto">
-          <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <Settings className="w-8 h-8 text-indigo-600" />
-                <h1 className="text-3xl font-bold">{loggedInCommittee ? `${loggedInCommittee.name} Chair` : 'Admin Panel'}</h1>
-              </div>
-              <div className="flex gap-2">
-                <button onClick={() => setShowAdmin(false)} className="px-4 py-2 bg-gray-600 text-white rounded-lg">
-                  Back to Clock
-                </button>
-                <button onClick={() => { setIsAdminAuthenticated(false); setLoggedInCommittee(null); setShowAdmin(false); }} className="px-4 py-2 bg-red-600 text-white rounded-lg">
-                  Logout
-                </button>
-              </div>
-            </div>
-
-            {timeEntries.length > 0 && !loggedInCommittee && (
-              <div className="space-y-2 mb-6">
-                <button onClick={exportWeeklyReports} className="w-full px-6 py-3 bg-emerald-600 text-white rounded-lg flex items-center justify-center gap-2">
-                  <Download className="w-5 h-5" />
-                  Export Current Week Reports
-                </button>
-                <button onClick={exportMonthlyReport} className="w-full px-6 py-3 bg-teal-600 text-white rounded-lg flex items-center justify-center gap-2">
-                  <Download className="w-5 h-5" />
-                  Export Current Month Reports
-                </button>
-                <button onClick={exportQuarterlyReport} className="w-full px-6 py-3 bg-cyan-600 text-white rounded-lg flex items-center justify-center gap-2">
-                  <Download className="w-5 h-5" />
-                  Export Current Quarter Reports
-                </button>
-                <button onClick={() => setShowDateRangeExport(true)} className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg flex items-center justify-center gap-2">
-                  <Calendar className="w-5 h-5" />
-                  Export by Date Range
-                </button>
-              </div>
-            )}
-
-            {loggedInCommittee && (
-              <div className="space-y-2 mb-6">
-                <button 
-                  onClick={() => exportCommitteeReport(loggedInCommittee.id)} 
-                  className="w-full px-6 py-3 bg-emerald-600 text-white rounded-lg flex items-center justify-center gap-2"
-                >
-                  <Download className="w-5 h-5" />
-                  Export All Time Entries
-                </button>
-                <button 
-                  onClick={exportMonthlyReport} 
-                  className="w-full px-6 py-3 bg-teal-600 text-white rounded-lg flex items-center justify-center gap-2"
-                >
-                  <Download className="w-5 h-5" />
-                  Export Current Month
-                </button>
-                <button 
-                  onClick={exportQuarterlyReport} 
-                  className="w-full px-6 py-3 bg-cyan-600 text-white rounded-lg flex items-center justify-center gap-2"
-                >
-                  <Download className="w-5 h-5" />
-                  Export Current Quarter
-                </button>
-                <button 
-                  onClick={() => setShowDateRangeExport(true)} 
-                  className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg flex items-center justify-center gap-2"
-                >
-                  <Calendar className="w-5 h-5" />
-                  Export by Date Range
-                </button>
-              </div>
-            )}
-
-            {!loggedInCommittee && (
-              <>
-                <div className="bg-red-50 border-2 border-red-200 rounded-lg p-4 mb-6">
-                  <h3 className="font-semibold text-red-900 mb-2">⚠️ Danger Zone</h3>
-                  <p className="text-sm text-red-700 mb-3">This will permanently delete all data.</p>
+                <div className="flex gap-4">
                   <button
-                    onClick={async () => {
-                      if (confirm('⚠️ WARNING: Delete ALL employees, committees, and time entries? This cannot be undone!')) {
-                        if (confirm('Are you ABSOLUTELY sure? This is your last chance!')) {
-                          for (const emp of employees) {
-                            await supabase.from('employees').delete().eq('id', emp.id);
-                          }
-                          for (const com of committees) {
-                            await supabase.from('committees').delete().eq('id', com.id);
-                          }
-                          for (const entry of timeEntries) {
-                            await supabase.from('time_entries').delete().eq('id', entry.id);
-                          }
-                          loadData();
-                          alert('All data has been deleted.');
-                        }
-                      }
-                    }}
-                    className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-semibold"
+                    onClick={saveEdit}
+                    className="flex-1 px-6 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700"
                   >
-                    Reset All Data
-                  </button>
-                </div>
-
-                <div className="flex gap-2 mb-6">
-                  <button
-                    onClick={() => setShowApprovals(false)}
-                    className={`flex-1 px-6 py-3 rounded-lg ${!showApprovals ? 'bg-indigo-600 text-white' : 'bg-gray-200'}`}
-                  >
-                    Management
+                    Save
                   </button>
                   <button
-                    onClick={() => setShowApprovals(true)}
-                    className={`flex-1 px-6 py-3 rounded-lg ${showApprovals ? 'bg-indigo-600 text-white' : 'bg-gray-200'}`}
+                    onClick={cancelEdit}
+                    className="flex-1 px-6 py-3 bg-gray-600 text-white rounded-lg font-semibold hover:bg-gray-700"
                   >
-                    Approve Hours
+                    Cancel
                   </button>
                 </div>
-              </>
-            )}
-
-            {(showApprovals && !loggedInCommittee) || loggedInCommittee ? (
-              <div className="bg-white rounded-lg shadow-lg p-6">
-                <h2 className="text-xl font-bold mb-4">{loggedInCommittee ? 'Approve Hours for Your Committee' : 'Approve Weekly Hours'}</h2>
-                
-                {selectedEntries.length > 0 && (
-                  <div className="mb-4 p-4 bg-indigo-50 rounded-lg flex items-center justify-between">
-                    <span className="font-semibold text-indigo-900">
-                      {selectedEntries.length} entries selected
-                    </span>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={bulkApprove}
-                        className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold"
-                      >
-                        Bulk Approve
-                      </button>
-                      <button
-                        onClick={bulkReject}
-                        className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-semibold"
-                      >
-                        Bulk Reject
-                      </button>
-                      <button
-                        onClick={() => setSelectedEntries([])}
-                        className="px-4 py-2 bg-gray-400 text-white rounded-lg text-sm"
-                      >
-                        Clear
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {(loggedInCommittee ? [loggedInCommittee] : committees).map(committee => {
-                  const week = getWeekDates(new Date());
-                  const committeeEntries = timeEntries.filter(e => {
-                    return e.committee_id === committee.id && e.clock_out;
-                  });
-                  if (committeeEntries.length === 0) return null;
-                  const pendingCount = committeeEntries.filter(e => e.status === 'pending').length;
-                  return (
-                    <div key={committee.id} className="mb-6 p-4 bg-gray-50 rounded-lg">
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-3">
-                          {pendingCount > 0 && (
-                            <input
-                              type="checkbox"
-                              checked={committeeEntries.filter(e => e.status === 'pending').every(e => selectedEntries.includes(e.id))}
-                              onChange={() => toggleSelectAll(committeeEntries)}
-                              className="w-5 h-5 cursor-pointer"
-                              title="Select all pending"
-                            />
-                          )}
-                          <h3 className="text-lg font-semibold">{committee.name}</h3>
-                        </div>
-                        {pendingCount > 0 && (
-                          <button
-                            onClick={async () => {
-                              for (const entry of committeeEntries.filter(e => e.status === 'pending')) {
-                                await approveEntry(entry.id);
-                              }
-                            }}
-                            className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm"
-                          >
-                            Approve All ({pendingCount})
-                          </button>
-                        )}
-                      </div>
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="border-b">
-                              <th className="text-left py-2 px-2 w-8"></th>
-                              <th className="text-left py-2 px-2">Employee</th>
-                              <th className="text-left py-2 px-2">Date</th>
-                              <th className="text-left py-2 px-2">Clock In</th>
-                              <th className="text-left py-2 px-2">Clock Out</th>
-                              <th className="text-left py-2 px-2">Hours</th>
-                              <th className="text-left py-2 px-2">Notes</th>
-                              <th className="text-left py-2 px-2">Status</th>
-                              <th className="text-left py-2 px-2">Actions</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {committeeEntries.map(entry => (
-                              <tr key={entry.id} className="border-b">
-                                <td className="py-2 px-2">
-                                  {entry.status === 'pending' && (
-                                    <input
-                                      type="checkbox"
-                                      checked={selectedEntries.includes(entry.id)}
-                                      onChange={() => toggleEntrySelection(entry.id)}
-                                      className="w-4 h-4 cursor-pointer"
-                                    />
-                                  )}
-                                </td>
-                                <td className="py-2 px-2">{entry.employee_name}</td>
-                                <td className="py-2 px-2">{new Date(entry.clock_in).toLocaleDateString('en-US')}</td>
-                                <td className="py-2 px-2 text-xs">{new Date(entry.clock_in).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</td>
-                                <td className="py-2 px-2 text-xs">{entry.clock_out ? new Date(entry.clock_out).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '-'}</td>
-                                <td className="py-2 px-2 font-semibold">{formatHours(calculateHours(entry.clock_in, entry.clock_out))}</td>
-                                <td className="py-2 px-2 text-xs max-w-xs truncate">{entry.notes || '-'}</td>
-                                <td className="py-2 px-2">
-                                  <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                                    entry.status === 'approved' ? 'bg-green-100 text-green-800' :
-                                    entry.status === 'rejected' ? 'bg-red-100 text-red-800' :
-                                    'bg-yellow-100 text-yellow-800'
-                                  }`}>
-                                    {entry.status || 'pending'}
-                                  </span>
-                                </td>
-                                <td className="py-2 px-2">
-                                  <div className="flex gap-1 flex-wrap">
-                                    {entry.status === 'pending' && (
-                                      <>
-                                        <button onClick={() => approveEntry(entry.id)} className="px-2 py-1 bg-green-600 text-white rounded text-xs">
-                                          Approve
-                                        </button>
-                                        <button onClick={() => rejectEntry(entry.id)} className="px-2 py-1 bg-red-600 text-white rounded text-xs">
-                                          Reject
-                                        </button>
-                                      </>
-                                    )}
-                                    <button onClick={() => startEditEntry(entry)} className="px-2 py-1 bg-blue-600 text-white rounded text-xs">
-                                      Edit
-                                    </button>
-                                    <button onClick={() => deleteEntry(entry.id)} className="px-2 py-1 bg-gray-600 text-white rounded text-xs">
-                                      Delete
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  );
-                })}
-                {loggedInCommittee && timeEntries.filter(e => e.committee_id === loggedInCommittee.id && e.clock_out).length === 0 && (
-                  <p className="text-gray-500 text-center py-8">No time entries to approve yet</p>
-                )}
               </div>
-            ) : !loggedInCommittee ? (
-              <>
-                <div className="grid md:grid-cols-2 gap-4 mb-6">
-                  <div className="p-4 bg-gray-50 rounded-lg">
-                    <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                      <User className="w-5 h-5" />
-                      Add Employee
-                    </h2>
-                    <div className="space-y-2">
-                      <input
-                        type="text"
-                        value={newEmployeeNumber}
-                        onChange={(e) => setNewEmployeeNumber(e.target.value)}
-                        placeholder="Employee number"
-                        className="w-full px-4 py-2 border rounded-lg"
-                      />
-                      <input
-                        type="text"
-                        value={newEmployeeName}
-                        onChange={(e) => setNewEmployeeName(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && addEmployee()}
-                        placeholder="Employee name"
-                        className="w-full px-4 py-2 border rounded-lg"
-                      />
-                      <button onClick={addEmployee} className="w-full px-6 py-2 bg-indigo-600 text-white rounded-lg">
-                        Add Employee
-                      </button>
-                      <div className="pt-2 border-t">
-                        <label className="block w-full px-6 py-2 bg-emerald-600 text-white rounded-lg cursor-pointer text-center">
-                          <Upload className="w-4 h-4 inline mr-2" />
-                          Import CSV/Excel
-                          <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFileImport} className="hidden" />
-                        </label>
-                        <p className="text-xs text-gray-600 mt-1 text-center">Columns: "Employee Number" and "Employee Name"</p>
-                      </div>
-                    </div>
-                    <div className="mt-4">
-                      <h3 className="font-semibold mb-2">Employees ({employees.length}):</h3>
-                      <div className="space-y-1 max-h-40 overflow-y-auto">
-                        {employees.map(emp => (
-                          <div key={emp.id} className="text-sm p-2 bg-white rounded border flex justify-between items-center">
-                            <span>#{emp.number} - {emp.name}</span>
-                            <button
-                              onClick={async () => {
-                                if (confirm(`Delete ${emp.name}? This will remove all their time entries.`)) {
-                                  await supabase.from('employees').delete().eq('id', emp.id);
-                                  await supabase.from('time_entries').delete().eq('employee_id', emp.id);
-                                  loadData();
-                                }
-                              }}
-                              className="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-xs"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="p-4 bg-gray-50 rounded-lg">
-                    <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                      <Building2 className="w-5 h-5" />
-                      Add Committee
-                    </h2>
-                    <div className="space-y-2">
-                      <input
-                        type="text"
-                        value={newCommitteeName}
-                        onChange={(e) => setNewCommitteeName(e.target.value)}
-                        placeholder="Committee name"
-                        className="w-full px-4 py-2 border rounded-lg"
-                      />
-                      <input
-                        type="text"
-                        value={newCommitteeChair}
-                        onChange={(e) => setNewCommitteeChair(e.target.value)}
-                        placeholder="Chair name"
-                        className="w-full px-4 py-2 border rounded-lg"
-                      />
-                      <input
-                        type="password"
-                        value={newCommitteePassword}
-                        onChange={(e) => setNewCommitteePassword(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && addCommittee()}
-                        placeholder="Chair password"
-                        className="w-full px-4 py-2 border rounded-lg"
-                      />
-                      <button onClick={addCommittee} className="w-full px-6 py-2 bg-indigo-600 text-white rounded-lg">
-                        Add Committee
-                      </button>
-                    </div>
-                    <div className="mt-4">
-                      <h3 className="font-semibold mb-2">Committees ({committees.length}):</h3>
-                      <div className="space-y-1 max-h-40 overflow-y-auto">
-                        {committees.map(com => (
-                          <div key={com.id} className="text-sm p-2 bg-white rounded border flex justify-between items-center">
-                            <div>
-                              <div className="font-semibold">{com.name}</div>
-                              <div className="text-xs text-gray-600">Chair: {com.chair}</div>
-                            </div>
-                            <button
-                              onClick={async () => {
-                                if (confirm(`Delete ${com.name}? This will remove all related time entries.`)) {
-                                  await supabase.from('committees').delete().eq('id', com.id);
-                                  await supabase.from('time_entries').delete().eq('committee_id', com.id);
-                                  loadData();
-                                }
-                              }}
-                              className="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-xs"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-white rounded-lg shadow-lg p-6">
-                  <h2 className="text-xl font-bold mb-4">Recent Time Entries</h2>
-                  {timeEntries.length === 0 ? (
-                    <p className="text-gray-500 text-center py-8">No time entries yet</p>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full">
-                        <thead>
-                          <tr className="border-b-2">
-                            <th className="text-left py-3 px-4">Emp #</th>
-                            <th className="text-left py-3 px-4">Employee</th>
-                            <th className="text-left py-3 px-4">Committee</th>
-                            <th className="text-left py-3 px-4">Clock In</th>
-                            <th className="text-left py-3 px-4">Clock Out</th>
-                            <th className="text-left py-3 px-4">Hours</th>
-                            <th className="text-left py-3 px-4">Status</th>
-                            <th className="text-left py-3 px-4">Notes</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {timeEntries.slice().reverse().map(entry => (
-                            <tr key={entry.id} className="border-b hover:bg-gray-50">
-                              <td className="py-3 px-4">#{entry.employee_number}</td>
-                              <td className="py-3 px-4">{entry.employee_name}</td>
-                              <td className="py-3 px-4">
-                                <span className="px-2 py-1 bg-indigo-100 text-indigo-800 rounded text-sm">
-                                  {entry.committee_name}
-                                </span>
-                              </td>
-                              <td className="py-3 px-4 text-sm">{new Date(entry.clock_in).toLocaleString('en-US')}</td>
-                              <td className="py-3 px-4 text-sm">
-                                {entry.clock_out ? new Date(entry.clock_out).toLocaleString('en-US') : 
-                                  <span className="text-green-600 font-semibold">Active</span>}
-                              </td>
-                              <td className="py-3 px-4 font-semibold">
-                                {entry.clock_out ? formatHours(calculateHours(entry.clock_in, entry.clock_out)) : 'Clocked In'}
-                              </td>
-                              <td className="py-3 px-4">
-                                {entry.clock_out && (
-                                  <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                                    entry.status === 'approved' ? 'bg-green-100 text-green-800' :
-                                    entry.status === 'rejected' ? 'bg-red-100 text-red-800' :
-                                    'bg-yellow-100 text-yellow-800'
-                                  }`}>
-                                    {entry.status || 'pending'}
-                                  </span>
-                                )}
-                              </td>
-                              <td className="py-3 px-4 text-sm">{entry.notes || '-'}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              </>
-            ) : null}
-          </div>
-        </div>
-      </div>
-    );
-  }
-  if (!loggedInEmployee) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-6">
-        <div className="bg-white rounded-lg shadow-2xl p-8 w-full max-w-md">
-          <Clock className="w-16 h-16 text-indigo-600 mx-auto mb-4" />
-          <h1 className="text-3xl font-bold text-center mb-2">Groton Sportsmen's Club</h1>
-          <div className="text-2xl font-semibold text-center mb-2">{currentTime.toLocaleTimeString('en-US')}</div>
-          <div className="text-sm text-center text-gray-600 mb-8">{currentTime.toLocaleDateString('en-US')}</div>
-          <input
-            type="text"
-            value={loginInput}
-            onChange={(e) => setLoginInput(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
-            placeholder="Name or employee number"
-            className="w-full px-4 py-3 border-2 rounded-lg mb-4"
-            autoFocus
-          />
-          <button onClick={handleLogin} className="w-full px-6 py-3 bg-indigo-600 text-white rounded-lg mb-2 text-lg font-semibold">
-            <LogIn className="w-5 h-5 inline mr-2" />
-            Login
-          </button>
-          <button onClick={() => setShowAdmin(true)} className="w-full px-6 py-3 bg-gray-600 text-white rounded-lg">
-            <Settings className="w-5 h-5 inline mr-2" />
-            Admin Panel
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-6">
-      <div className="bg-white rounded-lg shadow-2xl p-8 w-full max-w-md">
-        <Clock className="w-12 h-12 text-indigo-600 mx-auto mb-3" />
-        <h2 className="text-2xl font-bold text-center mb-1">Welcome, {loggedInEmployee.name}!</h2>
-        <p className="text-center text-sm text-gray-600 mb-4">Employee #{loggedInEmployee.number}</p>
-        <div className="text-center text-xl font-semibold mb-6">{currentTime.toLocaleTimeString('en-US')}</div>
-        
-        <div className="mb-6 p-4 bg-indigo-50 rounded-lg">
-          <div className="flex justify-between items-center">
-            <span className="text-sm font-semibold flex items-center gap-2">
-              <BarChart3 className="w-4 h-4" />
-              Year to Date:
-            </span>
-            <span className="text-lg font-bold text-indigo-700">{formatHours(ytdHours)}</span>
-          </div>
-          <div className="text-xs text-indigo-600 mt-1">
-            FY: {fiscalYear.start.toLocaleDateString('en-US')} - {fiscalYear.end.toLocaleDateString('en-US')}
-          </div>
-        </div>
-
-        {!isEmployeeClockedIn() ? (
-          <div className="space-y-4">
-            <select
-              value={selectedCommittee}
-              onChange={(e) => setSelectedCommittee(e.target.value)}
-              className="w-full px-4 py-3 border-2 rounded-lg"
-            >
-              <option value="">Choose committee...</option>
-              {committees.map(com => (
-                <option key={com.id} value={com.id}>{com.name}</option>
-              ))}
-            </select>
-            <button
-              onClick={clockIn}
-              disabled={!selectedCommittee}
-              className="w-full px-6 py-4 bg-green-600 text-white rounded-lg disabled:bg-gray-300 text-lg font-semibold"
-            >
-              Clock In
-            </button>
-            <button onClick={() => setLoggedInEmployee(null)} className="w-full px-6 py-2 bg-gray-600 text-white rounded-lg">
-              Logout
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <div className="p-4 bg-green-50 rounded-lg border-2 border-green-200">
-              <p className="text-green-800 font-semibold text-center">Currently Clocked In</p>
-              <p className="text-sm text-green-700 text-center">
-                {(() => {
-                  const active = timeEntries.find(e => e.employee_id === loggedInEmployee.id && !e.clock_out);
-                  return active ? committees.find(c => c.id === active.committee_id)?.name : '';
-                })()}
-              </p>
             </div>
-            <div>
-              <label className="block text-sm font-semibold mb-2">Notes (Optional)</label>
-              <textarea
-                value={clockOutNotes}
-                onChange={(e) => setClockOutNotes(e.target.value)}
-                placeholder="What did you work on today?"
-                className="w-full px-4 py-3 border-2 rounded-lg resize-none"
-                rows="3"
-              />
-            </div>
-            <button onClick={clockOut} className="w-full px-6 py-4 bg-red-600 text-white rounded-lg text-lg font-semibold">
-              Clock Out
-            </button>
           </div>
         )}
       </div>
