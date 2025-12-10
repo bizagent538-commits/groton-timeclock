@@ -751,6 +751,10 @@ export default function App() {
       if (error) throw error;
 
       alert('✅ Clocked in successfully!');
+      
+      // Reset for next person
+      setLoggedInEmployee(null);
+      setSelectedCommittee('');
       loadData();
     } catch (error) {
       alert(`Error: ${error.message}`);
