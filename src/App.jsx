@@ -2209,7 +2209,7 @@ export default function App() {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Password (first 4 letters)"
+                  placeholder=""
                   className="w-full px-4 py-3 border-2 rounded-lg focus:border-indigo-500 focus:outline-none"
                   onKeyPress={(e) => {
                     if (e.key === 'Enter' && selectedCommittee && password) {
