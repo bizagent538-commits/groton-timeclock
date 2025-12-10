@@ -509,7 +509,9 @@ export default function App() {
 
         // Add employee
         console.log('Adding employee:', { name, number });
+        const newId = Math.floor(Date.now() + Math.random() * 1000);
         const { error: insertError } = await supabase.from('employees').insert({
+          id: newId,
           name: name,
           number: number
         });
