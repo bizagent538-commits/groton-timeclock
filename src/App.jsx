@@ -698,6 +698,111 @@ export default function App() {
     exportReportsByDateRange(exportStartDate, exportEndDate);
   };
 
+  // Grant-Ready Report Export
+  const exportGrantReport = () => {
+    const { start, end } = getCurrentFiscalYear();
+    
+    const wb = XLSX.utils.book_new();
+    
+    // Calculate totals
+    const allApprovedEntries = timeEntries.filter(e => 
+      e.clock_out && 
+      e.status === 'approved' &&
+      new Date(e.clock_in) >= start && 
+      new Date(e.clock_in) <= end
+    );
+
+    let totalHours = 0;
+    const committeeHours = {};
+    const volunteerHours = {};
+
+    allApprovedEntries.forEach(entry => {
+      const hours = calculateHours(entry);
+      totalHours += hours;
+
+      // By committee
+      if (!committeeHours[entry.committee_name]) {
+        committeeHours[entry.committee_name] = 0;
+      }
+      committeeHours[entry.committee_name] += hours;
+
+      // By volunteer
+      const volKey = `${entry.employee_name} (#${entry.employee_number})`;
+      if (!volunteerHours[volKey]) {
+        volunteerHours[volKey] = 0;
+      }
+      volunteerHours[volKey] += hours;
+    });
+
+    // Summary Sheet
+    const summaryData = [
+      { '': 'GROTON SPORTSMEN\'S CLUB', ' ': '' },
+      { '': 'VOLUNTEER HOURS GRANT REPORT', ' ': '' },
+      { '': '', ' ': '' },
+      { '': `Fiscal Year: ${start.toLocaleDateString()} to ${end.toLocaleDateString()}`, ' ': '' },
+      { '': '', ' ': '' },
+      { '': 'SUMMARY', ' ': '' },
+      { '': 'Total Volunteer Hours:', ' ': totalHours.toFixed(2) },
+      { '': 'Number of Volunteers:', ' ': Object.keys(volunteerHours).length },
+      { '': 'Number of Committees:', ' ': Object.keys(committeeHours).length },
+      { '': '', ' ': '' },
+      { '': 'IN-KIND VALUE CALCULATION', ' ': '' },
+      { '': 'Volunteer Hour Value:', ' ': '$29.95' },
+      { '': 'Total In-Kind Contribution:', ' ': `$${(totalHours * 29.95).toFixed(2)}` },
+      { '': '', ' ': '' },
+      { '': 'Note: $29.95 is the 2024 Independent Sector volunteer hour value', ' ': '' },
+    ];
+
+    const summarySheet = XLSX.utils.json_to_sheet(summaryData, { skipHeader: true });
+    XLSX.utils.book_append_sheet(wb, summarySheet, 'Summary');
+
+    // Hours by Committee Sheet
+    const committeeData = Object.entries(committeeHours)
+      .sort((a, b) => b[1] - a[1])
+      .map(([committee, hours]) => ({
+        'Committee': committee,
+        'Total Hours': hours.toFixed(2),
+        'Percentage': `${((hours / totalHours) * 100).toFixed(1)}%`,
+        'In-Kind Value': `$${(hours * 29.95).toFixed(2)}`
+      }));
+
+    const committeeSheet = XLSX.utils.json_to_sheet(committeeData);
+    XLSX.utils.book_append_sheet(wb, committeeSheet, 'By Committee');
+
+    // Hours by Volunteer Sheet
+    const volunteerData = Object.entries(volunteerHours)
+      .sort((a, b) => b[1] - a[1])
+      .map(([volunteer, hours]) => ({
+        'Volunteer': volunteer,
+        'Total Hours': hours.toFixed(2),
+        'In-Kind Value': `$${(hours * 29.95).toFixed(2)}`
+      }));
+
+    const volunteerSheet = XLSX.utils.json_to_sheet(volunteerData);
+    XLSX.utils.book_append_sheet(wb, volunteerSheet, 'By Volunteer');
+
+    // Detailed Entries Sheet
+    const detailedData = allApprovedEntries.map(entry => ({
+      'Date': new Date(entry.clock_in).toLocaleDateString(),
+      'Volunteer': entry.employee_name,
+      'Employee #': entry.employee_number,
+      'Committee': entry.committee_name,
+      'Clock In': new Date(entry.clock_in).toLocaleTimeString(),
+      'Clock Out': new Date(entry.clock_out).toLocaleTimeString(),
+      'Hours': calculateHours(entry).toFixed(2),
+      'Work Description': entry.notes || ''
+    }));
+
+    const detailedSheet = XLSX.utils.json_to_sheet(detailedData);
+    XLSX.utils.book_append_sheet(wb, detailedSheet, 'Detailed Entries');
+
+    // Save file
+    const fiscalYearLabel = start.getFullYear();
+    XLSX.writeFile(wb, `Grant_Report_FY${fiscalYearLabel}.xlsx`);
+
+    alert('✅ Grant report downloaded!');
+  };
+
   // Volunteer login
   const handleVolunteerLogin = () => {
     if (!loginInput.trim()) return;
@@ -852,6 +957,33 @@ export default function App() {
   const removePhoto = () => {
     setClockOutPhoto(null);
     setClockOutPhotoPreview('');
+  };
+
+  // Delete All Entries (Admin only - for testing)
+  const deleteAllEntries = async () => {
+    if (!confirm('⚠️ DELETE ALL TIME ENTRIES?\n\nThis will permanently delete ALL time entries in the system.\n\nThis action CANNOT be undone!\n\nType "DELETE ALL" to confirm.')) {
+      return;
+    }
+
+    const confirmation = prompt('Type "DELETE ALL" to confirm:');
+    if (confirmation !== 'DELETE ALL') {
+      alert('Deletion cancelled - confirmation text did not match');
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('time_entries')
+        .delete()
+        .neq('id', 0); // Delete all (neq 0 means everything)
+
+      if (error) throw error;
+
+      alert('✅ All time entries deleted!');
+      loadData();
+    } catch (error) {
+      alert(`Error: ${error.message}`);
+    }
   };
 
   const handleLogin = async (e) => {
@@ -1417,6 +1549,36 @@ export default function App() {
                   <Calendar size={20} />
                   Custom Date Range
                 </button>
+
+                {/* Grant Report Button - Highlighted */}
+                <button
+                  onClick={exportGrantReport}
+                  className="col-span-2 px-6 py-4 bg-purple-600 text-white rounded-lg font-bold hover:bg-purple-700 flex items-center justify-center gap-2 text-lg border-4 border-purple-300"
+                >
+                  <Download size={24} />
+                  📊 GRANT REPORT (Fiscal Year)
+                </button>
+              </div>
+
+              {/* Delete All Button - Hidden at bottom */}
+              <div className="mt-6 pt-6 border-t-2">
+                <details className="text-sm">
+                  <summary className="cursor-pointer text-gray-500 hover:text-gray-700 font-semibold">
+                    ⚠️ Danger Zone (Testing Tools)
+                  </summary>
+                  <div className="mt-4 p-4 bg-red-50 border-2 border-red-200 rounded-lg">
+                    <p className="text-red-800 font-semibold mb-3">
+                      ⚠️ Warning: This will delete ALL time entries permanently!
+                    </p>
+                    <button
+                      onClick={deleteAllEntries}
+                      className="px-6 py-3 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 flex items-center gap-2"
+                    >
+                      <Trash2 size={20} />
+                      Delete All Time Entries
+                    </button>
+                  </div>
+                </details>
               </div>
 
               {showDateRangeExport && (
