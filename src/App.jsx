@@ -26,6 +26,7 @@ export default function App() {
   // Employee management state
   const [newEmployeeName, setNewEmployeeName] = useState('');
   const [newEmployeeNumber, setNewEmployeeNumber] = useState('');
+  const [newEmployeeHours, setNewEmployeeHours] = useState('');
 
   // Committee management state
   const [newCommitteeName, setNewCommitteeName] = useState('');
@@ -108,7 +109,16 @@ export default function App() {
 
       if (error) throw error;
       
-      setUserProfile(data);
+      if (data) {
+        // Check if this chair has special permissions (Membership or Work Hours committee)
+        if (data.role === 'chair' && data.committee_id) {
+          // We'll check committee name after committees are loaded
+          setUserProfile({ ...data, needsCommitteeCheck: true });
+        } else {
+          setUserProfile(data);
+        }
+      }
+      
       loadData(); // Load data for everyone (volunteers need employee list)
     } catch (error) {
       console.error('Error loading user profile:', error);
@@ -124,7 +134,25 @@ export default function App() {
       ]);
 
       if (empRes.data) setEmployees(empRes.data);
-      if (comRes.data) setCommittees(comRes.data);
+      if (comRes.data) {
+        setCommittees(comRes.data);
+        
+        // Check for special committee permissions
+        if (userProfile && userProfile.needsCommitteeCheck && userProfile.committee_id) {
+          const committee = comRes.data.find(c => c.id === userProfile.committee_id);
+          if (committee) {
+            const specialCommittees = ['membership', 'work hours', 'workhours', 'work-hours'];
+            const isSpecialChair = specialCommittees.some(name => 
+              committee.name.toLowerCase().includes(name)
+            );
+            if (isSpecialChair) {
+              setUserProfile({ ...userProfile, hasEmployeeManagement: true, needsCommitteeCheck: false });
+            } else {
+              setUserProfile({ ...userProfile, needsCommitteeCheck: false });
+            }
+          }
+        }
+      }
       if (entRes.data) {
         const now = new Date();
         const entries = entRes.data;
@@ -219,19 +247,60 @@ export default function App() {
       return;
     }
 
+    // Validate hours if provided
+    const hours = newEmployeeHours.trim();
+    if (hours && (isNaN(hours) || parseFloat(hours) < 0)) {
+      alert('Hours must be a positive number');
+      return;
+    }
+
     try {
-      const { error } = await supabase.from('employees').insert({
-        id: Date.now(),
+      const employeeId = Date.now();
+      
+      // Add employee
+      const { error: empError } = await supabase.from('employees').insert({
+        id: employeeId,
         name: newEmployeeName.trim(),
         number: newEmployeeNumber.trim()
       });
 
-      if (error) throw error;
+      if (empError) throw empError;
+
+      // Add historical hours if provided
+      if (hours && parseFloat(hours) > 0) {
+        const hoursFloat = parseFloat(hours);
+        const fiscalYear = getCurrentFiscalYear();
+        const historicalDate = fiscalYear.start; // Use start of fiscal year
+        
+        const { error: entryError } = await supabase.from('time_entries').insert({
+          id: Date.now() + 1,
+          employee_id: employeeId,
+          employee_name: newEmployeeName.trim(),
+          employee_number: newEmployeeNumber.trim(),
+          committee_id: 0,
+          committee_name: 'Historical Import',
+          clock_in: historicalDate.toISOString(),
+          clock_out: new Date(historicalDate.getTime() + (hoursFloat * 3600000)).toISOString(),
+          status: 'approved',
+          notes: 'Historical hours from before time clock system'
+        });
+
+        if (entryError) {
+          console.error('Error adding historical hours:', entryError);
+          alert(`⚠️ Employee added but historical hours failed to save`);
+        }
+      }
 
       setNewEmployeeName('');
       setNewEmployeeNumber('');
+      setNewEmployeeHours('');
       loadData();
-      alert('✅ Employee added!');
+      
+      if (hours && parseFloat(hours) > 0) {
+        alert(`✅ Employee added with ${hours} historical hours!`);
+      } else {
+        alert('✅ Employee added!');
+      }
     } catch (error) {
       alert(`Error: ${error.message}`);
     }
@@ -1372,7 +1441,7 @@ export default function App() {
               <div className="mt-6">
                 <div className="mb-6 p-4 bg-blue-50 rounded-lg border-2 border-blue-200">
                   <h3 className="font-semibold mb-4">Add New Employee</h3>
-                  <div className="flex gap-4">
+                  <div className="flex gap-4 mb-3">
                     <input
                       type="text"
                       value={newEmployeeName}
@@ -1389,12 +1458,25 @@ export default function App() {
                       className="w-48 px-4 py-3 border-2 rounded-lg text-lg"
                       onKeyPress={(e) => e.key === 'Enter' && newEmployeeName && addEmployee()}
                     />
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      value={newEmployeeHours}
+                      onChange={(e) => setNewEmployeeHours(e.target.value)}
+                      placeholder="Prior Hours (optional)"
+                      className="w-52 px-4 py-3 border-2 rounded-lg text-lg"
+                      title="Enter hours already worked this fiscal year (before using time clock)"
+                      onKeyPress={(e) => e.key === 'Enter' && newEmployeeName && newEmployeeNumber && addEmployee()}
+                    />
+                  </div>
+                  <div className="flex gap-4">
                     <button
                       onClick={addEmployee}
                       className="px-6 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 flex items-center gap-2"
                     >
                       <Plus size={20} />
-                      Add
+                      Add Employee
                     </button>
                     <label className="px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 cursor-pointer flex items-center gap-2">
                       <Upload size={20} />
@@ -1407,6 +1489,9 @@ export default function App() {
                       />
                     </label>
                   </div>
+                  <p className="text-sm text-gray-600 mt-3">
+                    💡 <strong>Prior Hours:</strong> Enter hours already worked this fiscal year (before time clock was implemented). Will be added as approved historical hours.
+                  </p>
                 </div>
 
                 {employees.length > 0 && (
@@ -1753,6 +1838,102 @@ export default function App() {
               </div>
             )}
           </div>
+
+          {/* Employee Management for Special Chairs (Membership & Work Hours) */}
+          {userProfile.hasEmployeeManagement && (
+            <div className="bg-white rounded-lg shadow-xl p-6 mt-6">
+              <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
+                <User size={28} />
+                Employee Management
+              </h2>
+              
+              <div className="mb-6 p-4 bg-blue-50 rounded-lg border-2 border-blue-200">
+                <h3 className="font-semibold mb-4">Add New Employee</h3>
+                <div className="flex gap-4 mb-3">
+                  <input
+                    type="text"
+                    value={newEmployeeName}
+                    onChange={(e) => setNewEmployeeName(e.target.value)}
+                    placeholder="Employee Name"
+                    className="flex-1 px-4 py-3 border-2 rounded-lg text-lg"
+                    onKeyPress={(e) => e.key === 'Enter' && newEmployeeNumber && addEmployee()}
+                  />
+                  <input
+                    type="text"
+                    value={newEmployeeNumber}
+                    onChange={(e) => setNewEmployeeNumber(e.target.value)}
+                    placeholder="Employee Number"
+                    className="w-48 px-4 py-3 border-2 rounded-lg text-lg"
+                    onKeyPress={(e) => e.key === 'Enter' && newEmployeeName && addEmployee()}
+                  />
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    value={newEmployeeHours}
+                    onChange={(e) => setNewEmployeeHours(e.target.value)}
+                    placeholder="Prior Hours (optional)"
+                    className="w-52 px-4 py-3 border-2 rounded-lg text-lg"
+                    title="Enter hours already worked this fiscal year (before using time clock)"
+                    onKeyPress={(e) => e.key === 'Enter' && newEmployeeName && newEmployeeNumber && addEmployee()}
+                  />
+                </div>
+                <div className="flex gap-4">
+                  <button
+                    onClick={addEmployee}
+                    className="px-6 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 flex items-center gap-2"
+                  >
+                    <Plus size={20} />
+                    Add Employee
+                  </button>
+                  <label className="px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 cursor-pointer flex items-center gap-2">
+                    <Upload size={20} />
+                    Import Excel
+                    <input
+                      type="file"
+                      accept=".xlsx,.xls,.csv"
+                      onChange={handleFileImport}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+                <p className="text-sm text-gray-600 mt-3">
+                  💡 <strong>Prior Hours:</strong> Enter hours already worked this fiscal year (before time clock was implemented). Will be added as approved historical hours.
+                </p>
+              </div>
+
+              {employees.length > 0 && (
+                <div className="border-2 rounded-lg overflow-hidden max-h-60 overflow-y-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-100 sticky top-0">
+                      <tr>
+                        <th className="p-4 text-left font-semibold">Number</th>
+                        <th className="p-4 text-left font-semibold">Name</th>
+                        <th className="p-4 text-left font-semibold">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {employees.map((emp, idx) => (
+                        <tr key={emp.id} className={`border-t hover:bg-gray-50 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                          <td className="p-4 font-mono">{emp.number}</td>
+                          <td className="p-4 font-semibold">{emp.name}</td>
+                          <td className="p-4">
+                            <button
+                              onClick={() => deleteEmployee(emp.id)}
+                              className="flex items-center gap-2 px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200"
+                            >
+                              <Trash2 size={16} />
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
 
           <TimeEntryTable />
 
