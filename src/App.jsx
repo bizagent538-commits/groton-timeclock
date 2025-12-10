@@ -1662,55 +1662,120 @@ export default function App() {
               Admin/Chair Login
             </h2>
 
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div>
-                <label className="block text-sm font-semibold mb-2">Email</label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="your@email.com"
+            {/* Committee Chair Simple Login */}
+            <div className="mb-6 p-4 bg-green-50 rounded-lg border-2 border-green-200">
+              <h3 className="font-semibold mb-4 text-center">Committee Chair Login</h3>
+              <div className="space-y-3">
+                <select
+                  value={selectedCommittee}
+                  onChange={(e) => setSelectedCommittee(e.target.value)}
                   className="w-full px-4 py-3 border-2 rounded-lg focus:border-indigo-500 focus:outline-none"
-                  required
-                  disabled={loading}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold mb-2">Password</label>
+                >
+                  <option value="">Select Your Committee...</option>
+                  {committees.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
                 <input
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
+                  placeholder="Password (first 4 letters)"
                   className="w-full px-4 py-3 border-2 rounded-lg focus:border-indigo-500 focus:outline-none"
-                  required
-                  disabled={loading}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter' && selectedCommittee && password) {
+                      const committee = committees.find(c => c.id === parseInt(selectedCommittee));
+                      if (committee && committee.name.substring(0, 4).toLowerCase() === password.toLowerCase()) {
+                        setUserProfile({ role: 'chair', committee_id: committee.id });
+                        setPassword('');
+                        setSelectedCommittee('');
+                      } else {
+                        alert('Incorrect password. Use first 4 letters of committee name.');
+                        setPassword('');
+                      }
+                    }
+                  }}
                 />
+                <button
+                  onClick={() => {
+                    if (!selectedCommittee) {
+                      alert('Please select a committee');
+                      return;
+                    }
+                    const committee = committees.find(c => c.id === parseInt(selectedCommittee));
+                    if (!committee) return;
+                    
+                    if (committee.name.substring(0, 4).toLowerCase() === password.toLowerCase()) {
+                      setUserProfile({ role: 'chair', committee_id: committee.id });
+                      setPassword('');
+                      setSelectedCommittee('');
+                    } else {
+                      alert('Incorrect password. Use first 4 letters of committee name.');
+                      setPassword('');
+                    }
+                  }}
+                  className="w-full px-6 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700"
+                >
+                  Login as Chair
+                </button>
               </div>
+            </div>
 
-              {error && (
-                <div className="p-3 bg-red-50 border-2 border-red-200 rounded-lg">
-                  <p className="text-sm text-red-600">{error}</p>
+            {/* Admin Email/Password Login */}
+            <div className="border-t-2 pt-6">
+              <h3 className="font-semibold mb-4 text-center text-gray-700">Admin Login</h3>
+              <form onSubmit={handleLogin} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold mb-2">Email</label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="your@email.com"
+                    className="w-full px-4 py-3 border-2 rounded-lg focus:border-indigo-500 focus:outline-none"
+                    disabled={loading}
+                  />
                 </div>
-              )}
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full px-6 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 disabled:bg-gray-400"
-              >
-                {loading ? 'Logging in...' : 'Login'}
-              </button>
+                <div>
+                  <label className="block text-sm font-semibold mb-2">Password</label>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full px-4 py-3 border-2 rounded-lg focus:border-indigo-500 focus:outline-none"
+                    disabled={loading}
+                  />
+                </div>
 
-              <button
-                type="button"
-                onClick={() => setUser(null)}
-                className="w-full px-6 py-3 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300"
-              >
-                Cancel
-              </button>
-            </form>
+                {error && (
+                  <div className="p-3 bg-red-50 border-2 border-red-200 rounded-lg">
+                    <p className="text-sm text-red-600">{error}</p>
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full px-6 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 disabled:bg-gray-400"
+                >
+                  {loading ? 'Logging in...' : 'Login as Admin'}
+                </button>
+              </form>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setUser(null);
+                setPassword('');
+                setSelectedCommittee('');
+              }}
+              className="w-full mt-4 px-6 py-3 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300"
+            >
+              Cancel
+            </button>
           </div>
         </div>
       )}
