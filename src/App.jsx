@@ -2215,7 +2215,17 @@ export default function App() {
                     if (e.key === 'Enter' && selectedCommittee && password) {
                       const committee = committees.find(c => c.id === parseInt(selectedCommittee));
                       if (committee && committee.name.substring(0, 4).toLowerCase() === password.toLowerCase()) {
-                        setUserProfile({ role: 'chair', committee_id: committee.id });
+                        // Check if special committee (Membership or Work Hours)
+                        const specialCommittees = ['membership', 'work hours', 'workhours', 'work-hours'];
+                        const isSpecialChair = specialCommittees.some(name => 
+                          committee.name.toLowerCase().includes(name)
+                        );
+                        
+                        setUserProfile({ 
+                          role: 'chair', 
+                          committee_id: committee.id,
+                          hasEmployeeManagement: isSpecialChair
+                        });
                         setPassword('');
                         setSelectedCommittee('');
                       } else {
@@ -2235,7 +2245,17 @@ export default function App() {
                     if (!committee) return;
                     
                     if (committee.name.substring(0, 4).toLowerCase() === password.toLowerCase()) {
-                      setUserProfile({ role: 'chair', committee_id: committee.id });
+                      // Check if special committee (Membership or Work Hours)
+                      const specialCommittees = ['membership', 'work hours', 'workhours', 'work-hours'];
+                      const isSpecialChair = specialCommittees.some(name => 
+                        committee.name.toLowerCase().includes(name)
+                      );
+                      
+                      setUserProfile({ 
+                        role: 'chair', 
+                        committee_id: committee.id,
+                        hasEmployeeManagement: isSpecialChair
+                      });
                       setPassword('');
                       setSelectedCommittee('');
                     } else {
