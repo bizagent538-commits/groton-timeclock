@@ -1567,19 +1567,64 @@ export default function App() {
             <h2 className="text-2xl font-bold mb-6 text-center">Volunteer Time Clock</h2>
             
             <div className="space-y-6">
-              <div>
+              <div className="relative">
                 <label className="block text-lg font-semibold mb-3">
                   Enter Your Name or Employee Number
                 </label>
                 <input
                   type="text"
                   value={loginInput}
-                  onChange={(e) => setLoginInput(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleVolunteerLogin()}
+                  onChange={(e) => {
+                    setLoginInput(e.target.value);
+                  }}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      const matches = employees.filter(emp => {
+                        const input = loginInput.toLowerCase();
+                        return emp.name.toLowerCase().includes(input) || 
+                               emp.number.toLowerCase().includes(input);
+                      });
+                      if (matches.length === 1) {
+                        setLoggedInEmployee(matches[0]);
+                        setLoginInput('');
+                      } else {
+                        handleVolunteerLogin();
+                      }
+                    }
+                  }}
                   placeholder="John Smith or 101"
                   className="w-full px-6 py-4 border-2 rounded-lg text-xl focus:border-indigo-500 focus:outline-none"
                   autoFocus
                 />
+                
+                {/* Autocomplete Dropdown */}
+                {loginInput.length > 0 && (() => {
+                  const matches = employees.filter(emp => {
+                    const input = loginInput.toLowerCase();
+                    return emp.name.toLowerCase().includes(input) || 
+                           emp.number.toLowerCase().includes(input);
+                  }).slice(0, 5); // Show max 5 matches
+
+                  if (matches.length > 0) {
+                    return (
+                      <div className="absolute z-10 w-full mt-2 bg-white border-2 border-indigo-200 rounded-lg shadow-xl max-h-80 overflow-y-auto">
+                        {matches.map(emp => (
+                          <button
+                            key={emp.id}
+                            onClick={() => {
+                              setLoggedInEmployee(emp);
+                              setLoginInput('');
+                            }}
+                            className="w-full px-6 py-4 text-left hover:bg-indigo-50 border-b last:border-b-0 transition-colors"
+                          >
+                            <div className="font-semibold text-lg">{emp.name}</div>
+                            <div className="text-sm text-gray-600">#{emp.number}</div>
+                          </button>
+                        ))}
+                      </div>
+                    );
+                  }
+                })()}
               </div>
 
               <button
