@@ -36,6 +36,8 @@ export default function App() {
   const [loggedInEmployee, setLoggedInEmployee] = useState(null);
   const [selectedCommittee, setSelectedCommittee] = useState('');
   const [clockOutNotes, setClockOutNotes] = useState('');
+  const [clockOutPhoto, setClockOutPhoto] = useState(null);
+  const [clockOutPhotoPreview, setClockOutPhotoPreview] = useState('');
 
   // Filter state
   const [statusFilter, setStatusFilter] = useState('all');
@@ -769,11 +771,36 @@ export default function App() {
     
     const sanitizedNotes = clockOutNotes.trim().replace(/[<>]/g, '');
     
+    // Handle photo upload if there is one
+    let photoUrl = null;
+    if (clockOutPhoto) {
+      try {
+        const fileExt = clockOutPhoto.name.split('.').pop();
+        const fileName = `${loggedInEmployee.id}_${Date.now()}.${fileExt}`;
+        
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('time-entry-photos')
+          .upload(fileName, clockOutPhoto);
+        
+        if (uploadError) throw uploadError;
+        
+        const { data: urlData } = supabase.storage
+          .from('time-entry-photos')
+          .getPublicUrl(fileName);
+        
+        photoUrl = urlData.publicUrl;
+      } catch (error) {
+        console.error('Photo upload error:', error);
+        alert('⚠️ Photo upload failed, but time entry was saved');
+      }
+    }
+    
     try {
       const { error } = await supabase.from('time_entries')
         .update({
           clock_out: new Date().toISOString(),
-          notes: sanitizedNotes
+          notes: sanitizedNotes,
+          photo_url: photoUrl
         })
         .eq('id', activeEntry.id);
 
@@ -781,12 +808,46 @@ export default function App() {
 
       alert('✅ Clocked out successfully!');
       setClockOutNotes('');
+      setClockOutPhoto(null);
+      setClockOutPhotoPreview('');
       setLoggedInEmployee(null);
       setSelectedCommittee('');
       loadData();
     } catch (error) {
       alert(`Error: ${error.message}`);
     }
+  };
+
+  // Handle photo selection
+  const handlePhotoSelect = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    // Check file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Photo must be smaller than 5MB');
+      return;
+    }
+    
+    // Check file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file');
+      return;
+    }
+    
+    setClockOutPhoto(file);
+    
+    // Create preview
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setClockOutPhotoPreview(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const removePhoto = () => {
+    setClockOutPhoto(null);
+    setClockOutPhotoPreview('');
   };
 
   const handleLogin = async (e) => {
@@ -1720,6 +1781,41 @@ export default function App() {
                   className="w-full px-6 py-4 border-2 rounded-lg text-lg focus:border-indigo-500 focus:outline-none resize-none"
                   rows="4"
                 />
+              </div>
+
+              {/* Photo Upload */}
+              <div>
+                <label className="block text-lg font-semibold mb-3">
+                  Add Photo (Optional)
+                </label>
+                
+                {!clockOutPhotoPreview ? (
+                  <label className="w-full px-6 py-4 border-2 border-dashed rounded-lg cursor-pointer hover:bg-gray-50 flex items-center justify-center gap-3">
+                    <Upload size={24} className="text-gray-400" />
+                    <span className="text-lg text-gray-600">Tap to add photo</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={handlePhotoSelect}
+                      className="hidden"
+                    />
+                  </label>
+                ) : (
+                  <div className="relative">
+                    <img 
+                      src={clockOutPhotoPreview} 
+                      alt="Work photo" 
+                      className="w-full rounded-lg border-2"
+                    />
+                    <button
+                      onClick={removePhoto}
+                      className="absolute top-2 right-2 p-2 bg-red-600 text-white rounded-full hover:bg-red-700"
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
+                )}
               </div>
 
               <button
