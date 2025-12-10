@@ -444,54 +444,93 @@ export default function App() {
     const file = e.target.files[0];
     if (!file) return;
 
+    console.log('File selected:', file.name);
+
     try {
       const data = await file.arrayBuffer();
+      console.log('File read successfully, size:', data.byteLength);
+      
       const workbook = XLSX.read(data);
+      console.log('Workbook parsed, sheets:', workbook.SheetNames);
+      
       const worksheet = workbook.Sheets[workbook.SheetNames[0]];
       const jsonData = XLSX.utils.sheet_to_json(worksheet);
+      console.log('Rows parsed:', jsonData.length);
+      console.log('First row:', jsonData[0]);
 
       let imported = 0;
       let skipped = 0;
 
       for (const row of jsonData) {
-        let name = String(row.Name || row.name || row['Employee Name'] || '').trim();
-        const number = String(row['Employee Number'] || row.Number || row.number || row['Employee #'] || '').trim();
+        // Handle various column name formats
+        let name = String(
+          row['Employee Name'] ||
+          row['employee name'] || 
+          row['member name'] || 
+          row['Member Name'] || 
+          row['Name'] || 
+          row.name || 
+          ''
+        ).trim();
+        
+        const number = String(
+          row['Employee Number'] || 
+          row['employee number'] ||
+          row.Number || 
+          row.number || 
+          row['Employee #'] || 
+          ''
+        ).trim();
+
+        console.log('Processing row:', { originalName: name, number });
 
         if (!name || !number) {
+          console.log('Skipping - missing name or number');
           skipped++;
           continue;
         }
 
-        // Handle "Last, First" format
+        // Handle "Last, First" format - convert to "First Last"
         if (name.includes(',')) {
           const parts = name.split(',').map(p => p.trim());
           if (parts.length === 2) {
-            name = `${parts[1]} ${parts[0]}`;
+            name = `${parts[1]} ${parts[0]}`; // "Smith, John" becomes "John Smith"
+            console.log('Converted name to:', name);
           }
         }
 
         // Check if already exists
         const exists = employees.some(e => e.number === number);
         if (exists) {
+          console.log('Skipping - duplicate number:', number);
           skipped++;
           continue;
         }
 
         // Add employee
-        await supabase.from('employees').insert({
-          id: Date.now() + Math.random(),
+        console.log('Adding employee:', { name, number });
+        const { error: insertError } = await supabase.from('employees').insert({
           name: name,
           number: number
         });
 
-        imported++;
+        if (insertError) {
+          console.error('Insert error for', name, ':', insertError);
+          skipped++;
+        } else {
+          imported++;
+        }
       }
 
       loadData();
       alert(`✅ Import complete!\nImported: ${imported}\nSkipped: ${skipped}`);
     } catch (error) {
+      console.error('Import error:', error);
       alert(`Import error: ${error.message}`);
     }
+    
+    // Reset file input
+    e.target.value = '';
   };
 
   // Date helpers
