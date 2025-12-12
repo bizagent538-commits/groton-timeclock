@@ -1370,7 +1370,8 @@ export default function App() {
     return (
       <div 
         className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-        onClick={(e) => {
+        style={{ pointerEvents: 'all' }}
+        onMouseDown={(e) => {
           // Only close if clicking the backdrop itself, not the modal content
           if (e.target === e.currentTarget) {
             cancelEdit();
@@ -1378,7 +1379,9 @@ export default function App() {
         }}
       >
         <div 
-          className="bg-white rounded-lg shadow-2xl max-w-2xl w-full p-8"
+          className="bg-white rounded-lg shadow-2xl max-w-2xl w-full p-8 relative"
+          style={{ pointerEvents: 'all', zIndex: 9999 }}
+          onMouseDown={(e) => e.stopPropagation()}
         >
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold">Edit Time Entry</h2>
@@ -1407,7 +1410,7 @@ export default function App() {
                     const time = editClockIn.split('T')[1] || '08:00';
                     setEditClockIn(`${e.target.value}T${time}`);
                   }}
-                  onClick={(e) => e.stopPropagation()}
+                  
                   className="flex-1 px-4 py-3 border-2 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
                 />
                 <input
@@ -1417,7 +1420,7 @@ export default function App() {
                     const date = editClockIn.split('T')[0];
                     setEditClockIn(`${date}T${e.target.value}`);
                   }}
-                  onClick={(e) => e.stopPropagation()}
+                  
                   className="w-32 px-4 py-3 border-2 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
                 />
               </div>
@@ -1437,7 +1440,7 @@ export default function App() {
                     const time = editClockOut ? editClockOut.split('T')[1] : '17:00';
                     setEditClockOut(`${e.target.value}T${time}`);
                   }}
-                  onClick={(e) => e.stopPropagation()}
+                  
                   className="flex-1 px-4 py-3 border-2 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
                 />
                 <input
@@ -1448,7 +1451,7 @@ export default function App() {
                     const date = editClockOut.split('T')[0];
                     setEditClockOut(`${date}T${e.target.value}`);
                   }}
-                  onClick={(e) => e.stopPropagation()}
+                  
                   className="w-32 px-4 py-3 border-2 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
                 />
               </div>
@@ -1478,10 +1481,10 @@ export default function App() {
               <textarea
                 value={editChairNotes}
                 onChange={(e) => setEditChairNotes(e.target.value)}
-                onClick={(e) => e.stopPropagation()}
                 className="w-full px-4 py-3 border-2 rounded-lg resize-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
                 rows="3"
                 placeholder="Add notes about this entry (corrections, approvals, etc.)"
+                autoFocus
               />
               <p className="text-xs text-gray-500 mt-1">
                 Your notes will be saved separately and visible to other chairs/admin
