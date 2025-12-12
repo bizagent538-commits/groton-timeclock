@@ -84,11 +84,12 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Update clock every second
+  // Update clock every second (but pause when editing to prevent re-renders)
   useEffect(() => {
+    if (editingEntry) return; // Don't update clock while editing
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [editingEntry]);
 
   // Auto-refresh data
   useEffect(() => {
