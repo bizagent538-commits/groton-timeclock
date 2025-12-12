@@ -1328,8 +1328,19 @@ export default function App() {
     if (!editingEntry) return null;
 
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-lg shadow-2xl max-w-2xl w-full p-8">
+      <div 
+        className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+        onClick={(e) => {
+          // Only close if clicking the backdrop itself, not the modal content
+          if (e.target === e.currentTarget) {
+            cancelEdit();
+          }
+        }}
+      >
+        <div 
+          className="bg-white rounded-lg shadow-2xl max-w-2xl w-full p-8"
+          onClick={(e) => e.stopPropagation()}
+        >
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold">Edit Time Entry</h2>
             <button onClick={cancelEdit} className="text-gray-500 hover:text-gray-700">
@@ -1349,24 +1360,55 @@ export default function App() {
 
             <div>
               <label className="block text-sm font-semibold mb-2">Clock In Date & Time</label>
-              <input
-                type="datetime-local"
-                value={editClockIn}
-                onChange={(e) => setEditClockIn(e.target.value)}
-                step="60"
-                className="w-full px-4 py-3 border-2 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-              />
+              <div className="flex gap-3">
+                <input
+                  type="date"
+                  value={editClockIn.split('T')[0]}
+                  onChange={(e) => {
+                    const time = editClockIn.split('T')[1] || '08:00';
+                    setEditClockIn(`${e.target.value}T${time}`);
+                  }}
+                  className="flex-1 px-4 py-3 border-2 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                />
+                <input
+                  type="time"
+                  value={editClockIn.split('T')[1] || '08:00'}
+                  onChange={(e) => {
+                    const date = editClockIn.split('T')[0];
+                    setEditClockIn(`${date}T${e.target.value}`);
+                  }}
+                  className="w-32 px-4 py-3 border-2 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                />
+              </div>
             </div>
 
             <div>
               <label className="block text-sm font-semibold mb-2">Clock Out Date & Time</label>
-              <input
-                type="datetime-local"
-                value={editClockOut}
-                onChange={(e) => setEditClockOut(e.target.value)}
-                step="60"
-                className="w-full px-4 py-3 border-2 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-              />
+              <div className="flex gap-3">
+                <input
+                  type="date"
+                  value={editClockOut ? editClockOut.split('T')[0] : ''}
+                  onChange={(e) => {
+                    if (!e.target.value) {
+                      setEditClockOut('');
+                      return;
+                    }
+                    const time = editClockOut ? editClockOut.split('T')[1] : '17:00';
+                    setEditClockOut(`${e.target.value}T${time}`);
+                  }}
+                  className="flex-1 px-4 py-3 border-2 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                />
+                <input
+                  type="time"
+                  value={editClockOut ? (editClockOut.split('T')[1] || '17:00') : ''}
+                  onChange={(e) => {
+                    if (!editClockOut) return;
+                    const date = editClockOut.split('T')[0];
+                    setEditClockOut(`${date}T${e.target.value}`);
+                  }}
+                  className="w-32 px-4 py-3 border-2 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                />
+              </div>
               <p className="text-xs text-gray-500 mt-1">Leave empty if still clocked in</p>
             </div>
 
