@@ -1379,7 +1379,6 @@ export default function App() {
       >
         <div 
           className="bg-white rounded-lg shadow-2xl max-w-2xl w-full p-8"
-          onClick={(e) => e.stopPropagation()}
         >
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold">Edit Time Entry</h2>
