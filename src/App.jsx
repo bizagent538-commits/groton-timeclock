@@ -1391,6 +1391,8 @@ export default function App() {
                     const time = editClockIn.split('T')[1] || '08:00';
                     setEditClockIn(`${e.target.value}T${time}`);
                   }}
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
                   className="flex-1 px-4 py-3 border-2 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
                 />
                 <input
@@ -1400,6 +1402,8 @@ export default function App() {
                     const date = editClockIn.split('T')[0];
                     setEditClockIn(`${date}T${e.target.value}`);
                   }}
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
                   className="w-32 px-4 py-3 border-2 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
                 />
               </div>
@@ -1419,6 +1423,8 @@ export default function App() {
                     const time = editClockOut ? editClockOut.split('T')[1] : '17:00';
                     setEditClockOut(`${e.target.value}T${time}`);
                   }}
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
                   className="flex-1 px-4 py-3 border-2 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
                 />
                 <input
@@ -1429,6 +1435,8 @@ export default function App() {
                     const date = editClockOut.split('T')[0];
                     setEditClockOut(`${date}T${e.target.value}`);
                   }}
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
                   className="w-32 px-4 py-3 border-2 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
                 />
               </div>
@@ -1458,6 +1466,9 @@ export default function App() {
               <textarea
                 value={editChairNotes}
                 onChange={(e) => setEditChairNotes(e.target.value)}
+                onMouseDown={(e) => e.stopPropagation()}
+                onFocus={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
                 className="w-full px-4 py-3 border-2 rounded-lg resize-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
                 rows="3"
                 placeholder="Add notes about this entry (corrections, approvals, etc.)"
