@@ -396,11 +396,28 @@ export default function App() {
     }
   };
 
+  // Helper function to convert Date to local datetime string for input
+  const toLocalDatetimeString = (date) => {
+    const d = new Date(date);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  };
+
+  // Helper function to convert local datetime string to ISO string
+  const localDatetimeToISO = (localDatetimeStr) => {
+    const date = new Date(localDatetimeStr);
+    return date.toISOString();
+  };
+
   // Edit functions
   const startEditEntry = (entry) => {
     setEditingEntry(entry);
-    setEditClockIn(new Date(entry.clock_in).toISOString().slice(0, 16));
-    setEditClockOut(entry.clock_out ? new Date(entry.clock_out).toISOString().slice(0, 16) : '');
+    setEditClockIn(toLocalDatetimeString(entry.clock_in));
+    setEditClockOut(entry.clock_out ? toLocalDatetimeString(entry.clock_out) : '');
     
     // Split notes: volunteer notes vs chair/admin notes
     const allNotes = entry.notes || '';
