@@ -1353,7 +1353,8 @@ export default function App() {
                 type="datetime-local"
                 value={editClockIn}
                 onChange={(e) => setEditClockIn(e.target.value)}
-                className="w-full px-4 py-3 border-2 rounded-lg"
+                step="60"
+                className="w-full px-4 py-3 border-2 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
               />
             </div>
 
@@ -1363,7 +1364,8 @@ export default function App() {
                 type="datetime-local"
                 value={editClockOut}
                 onChange={(e) => setEditClockOut(e.target.value)}
-                className="w-full px-4 py-3 border-2 rounded-lg"
+                step="60"
+                className="w-full px-4 py-3 border-2 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
               />
               <p className="text-xs text-gray-500 mt-1">Leave empty if still clocked in</p>
             </div>
