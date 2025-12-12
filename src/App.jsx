@@ -1479,12 +1479,12 @@ export default function App() {
                 Chair/Admin Notes (Add Your Notes Here)
               </label>
               <textarea
-                value={editChairNotes}
+                key={editingEntry?.id}
+                defaultValue={editChairNotes}
                 onChange={(e) => setEditChairNotes(e.target.value)}
                 className="w-full px-4 py-3 border-2 rounded-lg resize-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
                 rows="3"
                 placeholder="Add notes about this entry (corrections, approvals, etc.)"
-                autoFocus
               />
               <p className="text-xs text-gray-500 mt-1">
                 Your notes will be saved separately and visible to other chairs/admin
