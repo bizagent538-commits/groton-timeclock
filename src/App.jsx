@@ -49,6 +49,7 @@ export default function App() {
   const [editClockOut, setEditClockOut] = useState('');
   const [editNotes, setEditNotes] = useState('');
   const [editChairNotes, setEditChairNotes] = useState('');
+  const chairNotesRef = React.useRef(null);
 
   // Bulk operations state
   const [selectedEntries, setSelectedEntries] = useState([]);
@@ -454,7 +455,7 @@ export default function App() {
     
     // Combine volunteer notes and chair/admin notes
     let combinedNotes = editNotes.trim();
-    const chairNotesText = editChairNotes.trim();
+    const chairNotesText = (chairNotesRef.current?.value || '').trim();
     
     if (chairNotesText) {
       combinedNotes = combinedNotes 
@@ -1480,9 +1481,9 @@ export default function App() {
                 Chair/Admin Notes (Add Your Notes Here)
               </label>
               <textarea
+                ref={chairNotesRef}
                 key={editingEntry?.id}
                 defaultValue={editChairNotes}
-                onChange={(e) => setEditChairNotes(e.target.value)}
                 className="w-full px-4 py-3 border-2 rounded-lg resize-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
                 rows="3"
                 placeholder="Add notes about this entry (corrections, approvals, etc.)"
