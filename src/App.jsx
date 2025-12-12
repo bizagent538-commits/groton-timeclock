@@ -48,6 +48,7 @@ export default function App() {
   const [editClockIn, setEditClockIn] = useState('');
   const [editClockOut, setEditClockOut] = useState('');
   const [editNotes, setEditNotes] = useState('');
+  const [editChairNotes, setEditChairNotes] = useState('');
 
   // Bulk operations state
   const [selectedEntries, setSelectedEntries] = useState([]);
@@ -400,7 +401,18 @@ export default function App() {
     setEditingEntry(entry);
     setEditClockIn(new Date(entry.clock_in).toISOString().slice(0, 16));
     setEditClockOut(entry.clock_out ? new Date(entry.clock_out).toISOString().slice(0, 16) : '');
-    setEditNotes(entry.notes || '');
+    
+    // Split notes: volunteer notes vs chair/admin notes
+    const allNotes = entry.notes || '';
+    const separator = '\n--- Chair/Admin Notes ---\n';
+    if (allNotes.includes(separator)) {
+      const parts = allNotes.split(separator);
+      setEditNotes(parts[0]);
+      setEditChairNotes(parts[1]);
+    } else {
+      setEditNotes(allNotes);
+      setEditChairNotes('');
+    }
   };
 
   const cancelEdit = () => {
@@ -408,6 +420,7 @@ export default function App() {
     setEditClockIn('');
     setEditClockOut('');
     setEditNotes('');
+    setEditChairNotes('');
   };
 
   const saveEdit = async () => {
@@ -421,12 +434,22 @@ export default function App() {
       return;
     }
     
+    // Combine volunteer notes and chair/admin notes
+    let combinedNotes = editNotes.trim();
+    const chairNotesText = editChairNotes.trim();
+    
+    if (chairNotesText) {
+      combinedNotes = combinedNotes 
+        ? `${combinedNotes}\n--- Chair/Admin Notes ---\n${chairNotesText}`
+        : `--- Chair/Admin Notes ---\n${chairNotesText}`;
+    }
+    
     try {
       const { error } = await supabase.from('time_entries')
         .update({
           clock_in: clockInDate.toISOString(),
           clock_out: clockOutDate ? clockOutDate.toISOString() : null,
-          notes: editNotes.trim()
+          notes: combinedNotes
         })
         .eq('id', editingEntry.id);
 
@@ -1413,14 +1436,35 @@ export default function App() {
             </div>
 
             <div>
-              <label className="block text-sm font-semibold mb-2">Notes</label>
+              <label className="block text-sm font-semibold mb-2">
+                Volunteer Notes (Read-Only)
+              </label>
               <textarea
                 value={editNotes}
-                onChange={(e) => setEditNotes(e.target.value)}
-                className="w-full px-4 py-3 border-2 rounded-lg resize-none"
-                rows="4"
-                placeholder="What did they work on?"
+                readOnly
+                className="w-full px-4 py-3 border-2 rounded-lg resize-none bg-gray-50 text-gray-700 cursor-not-allowed"
+                rows="3"
+                placeholder="No notes from volunteer"
               />
+              <p className="text-xs text-gray-500 mt-1">
+                These are the notes the volunteer wrote when clocking out
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold mb-2">
+                Chair/Admin Notes (Add Your Notes Here)
+              </label>
+              <textarea
+                value={editChairNotes}
+                onChange={(e) => setEditChairNotes(e.target.value)}
+                className="w-full px-4 py-3 border-2 rounded-lg resize-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                rows="3"
+                placeholder="Add notes about this entry (corrections, approvals, etc.)"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Your notes will be saved separately and visible to other chairs/admin
+              </p>
             </div>
 
             <div className="flex gap-4 pt-4">
