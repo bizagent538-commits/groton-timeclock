@@ -1747,18 +1747,6 @@ export default function App() {
             </div>
 
             <TimeEntryTable />
-
-            <div className="bg-green-50 rounded-lg border-2 border-green-200 p-4">
-              <p className="text-sm text-green-800">
-                ✅ <strong>COMPLETE!</strong> All features are working!<br/>
-                • Employee & Committee Management ✓<br/>
-                • Volunteer Clock In/Out ✓<br/>
-                • Chair Approval Dashboard ✓<br/>
-                • Time Entry Editing & Bulk Operations ✓<br/>
-                • Excel Import & Report Exports ✓<br/>
-                <strong className="block mt-2">🎉 Your time clock system is production-ready!</strong>
-              </p>
-            </div>
           </div>
         </div>
         <EditModal />
@@ -1980,13 +1968,6 @@ export default function App() {
           )}
 
           <TimeEntryTable />
-
-          <div className="mt-6 bg-green-50 rounded-lg border-2 border-green-200 p-4">
-            <p className="text-sm text-green-800">
-              ✅ <strong>COMPLETE!</strong> All features working!<br/>
-              🎉 Your committee dashboard is ready to use!
-            </p>
-          </div>
         </div>
         <EditModal />
       </div>
