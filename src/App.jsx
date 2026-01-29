@@ -920,7 +920,7 @@ export default function App() {
     
     const input = loginInput.trim().toLowerCase().replace(/[<>]/g, '');
     const employee = employees.find(e => 
-      e.number.toLowerCase() === input || e.name.toLowerCase() === input
+      (e.number || '').toLowerCase() === input || e.name.toLowerCase() === input
     );
     
     if (employee) {
@@ -2085,7 +2085,7 @@ export default function App() {
                       const matches = employees.filter(emp => {
                         const input = loginInput.toLowerCase();
                         return emp.name.toLowerCase().includes(input) || 
-                               emp.number.toLowerCase().includes(input);
+                               (emp.number || '').toLowerCase().includes(input);
                       });
                       if (matches.length === 1) {
                         setLoggedInEmployee(matches[0]);
@@ -2105,7 +2105,7 @@ export default function App() {
                   const matches = employees.filter(emp => {
                     const input = loginInput.toLowerCase();
                     return emp.name.toLowerCase().includes(input) || 
-                           emp.number.toLowerCase().includes(input);
+                           (emp.number || '').toLowerCase().includes(input);
                   }).slice(0, 5); // Show max 5 matches
 
                   if (matches.length > 0) {
