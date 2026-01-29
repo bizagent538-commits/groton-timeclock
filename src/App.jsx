@@ -266,24 +266,23 @@ export default function App() {
     }
 
     try {
-      const employeeId = Date.now();
-      
       // Split name into first and last name (split on last space)
       const nameParts = newEmployeeName.trim().split(' ');
       const firstName = nameParts[0];
       const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
       
-      // Add member to members table
-      const { error: empError } = await supabase.from('members').insert({
-        id: employeeId,
+      // Add member to members table (let Supabase generate UUID)
+      const { data: newMember, error: empError } = await supabase.from('members').insert({
         first_name: firstName,
         last_name: lastName,
         member_number: newEmployeeNumber.trim(),
         status: 'Active',
         tier: 'Regular'
-      });
+      }).select().single();
 
       if (empError) throw empError;
+      
+      const employeeId = newMember.id; // Get the UUID that was generated
 
       // Add historical hours if provided
       if (hours && parseFloat(hours) > 0) {
@@ -292,7 +291,6 @@ export default function App() {
         const historicalDate = fiscalYear.start; // Use start of fiscal year
         
         const { error: entryError } = await supabase.from('time_entries').insert({
-          id: Date.now() + 1,
           employee_id: employeeId,
           employee_name: newEmployeeName.trim(),
           employee_number: newEmployeeNumber.trim(),
@@ -357,7 +355,6 @@ export default function App() {
 
     try {
       const { error } = await supabase.from('committees').insert({
-        id: Date.now(),
         name: newCommitteeName.trim(),
         chair: newCommitteeChair.trim(),
         password: ''
@@ -651,9 +648,7 @@ export default function App() {
 
         // Add member to members table
         console.log('Adding member:', { firstName, lastName, number });
-        const newId = Math.floor(Date.now() + Math.random() * 1000);
         const { error: insertError } = await supabase.from('members').insert({
-          id: newId,
           first_name: firstName,
           last_name: lastName,
           member_number: number,
@@ -986,7 +981,6 @@ export default function App() {
     
     try {
       const { error } = await supabase.from('time_entries').insert({
-        id: Date.now(),
         employee_id: loggedInEmployee.id,
         employee_name: loggedInEmployee.name,
         employee_number: loggedInEmployee.number,
