@@ -213,12 +213,12 @@ export default function App() {
     }
   };
 
-  const getYTDHours = (employeeId) => {
+  const getYTDHours = (employeeNumberOrId) => {
     const { start, end } = getCurrentFiscalYear();
     
     return timeEntries
       .filter(e => 
-        e.employee_id === employeeId && 
+        (e.employee_id === employeeNumberOrId || e.employee_number === employeeNumberOrId) && 
         e.clock_out && 
         e.status === 'approved' &&
         new Date(e.clock_in) >= start && 
@@ -962,7 +962,10 @@ export default function App() {
 
   const isClockedIn = () => {
     if (!loggedInEmployee) return false;
-    return timeEntries.some(e => e.employee_id === loggedInEmployee.id && !e.clock_out);
+    return timeEntries.some(e => 
+      (e.employee_id === loggedInEmployee.id || e.employee_number === loggedInEmployee.number) && 
+      !e.clock_out
+    );
   };
 
   const clockIn = async () => {
@@ -1007,7 +1010,8 @@ export default function App() {
     if (!loggedInEmployee) return;
     
     const activeEntry = timeEntries.find(e => 
-      e.employee_id === loggedInEmployee.id && !e.clock_out
+      (e.employee_id === loggedInEmployee.id || e.employee_number === loggedInEmployee.number) && 
+      !e.clock_out
     );
     
     if (!activeEntry) {
@@ -2185,7 +2189,7 @@ export default function App() {
               </h2>
               <p className="text-gray-600">Employee #{loggedInEmployee.number}</p>
               <p className="text-sm text-indigo-600 font-semibold mt-2">
-                Fiscal Year Hours: {getYTDHours(loggedInEmployee.id).toFixed(2)} (approved)
+                Fiscal Year Hours: {getYTDHours(loggedInEmployee.number).toFixed(2)} (approved)
               </p>
             </div>
 
