@@ -131,12 +131,20 @@ export default function App() {
   const loadData = async () => {
     try {
       const [empRes, comRes, entRes] = await Promise.all([
-        supabase.from('employees').select('*').order('name'),
+        supabase.from('members').select('*').eq('status', 'Active').order('last_name'),
         supabase.from('committees').select('*').order('name'),
         supabase.from('time_entries').select('*').order('clock_in', { ascending: false })
       ]);
 
-      if (empRes.data) setEmployees(empRes.data);
+      // Map members table fields to employee format expected by UI
+      if (empRes.data) {
+        const mappedEmployees = empRes.data.map(member => ({
+          ...member,
+          name: `${member.first_name} ${member.last_name}`.trim(),
+          number: member.member_number || member.key_fob_number || ''
+        }));
+        setEmployees(mappedEmployees);
+      }
       if (comRes.data) {
         setCommittees(comRes.data);
         
@@ -230,23 +238,23 @@ export default function App() {
   // Employee management
   const addEmployee = async () => {
     if (!newEmployeeName.trim() || !newEmployeeNumber.trim()) {
-      alert('Please fill in both name and employee number');
+      alert('Please fill in both name and member number');
       return;
     }
 
     if (!/^[a-zA-Z0-9_-]+$/.test(newEmployeeNumber.trim())) {
-      alert('Employee number can only contain letters, numbers, hyphens, and underscores.');
+      alert('Member number can only contain letters, numbers, hyphens, and underscores.');
       return;
     }
 
     if (!/^[a-zA-Z\s'-]+$/.test(newEmployeeName.trim())) {
-      alert('Employee name can only contain letters, spaces, hyphens, and apostrophes.');
+      alert('Member name can only contain letters, spaces, hyphens, and apostrophes.');
       return;
     }
 
     const exists = employees.some(e => e.number === newEmployeeNumber.trim());
     if (exists) {
-      alert('Employee number already exists!');
+      alert('Member number already exists!');
       return;
     }
 
@@ -260,11 +268,19 @@ export default function App() {
     try {
       const employeeId = Date.now();
       
-      // Add employee
-      const { error: empError } = await supabase.from('employees').insert({
+      // Split name into first and last name (split on last space)
+      const nameParts = newEmployeeName.trim().split(' ');
+      const firstName = nameParts[0];
+      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
+      
+      // Add member to members table
+      const { error: empError } = await supabase.from('members').insert({
         id: employeeId,
-        name: newEmployeeName.trim(),
-        number: newEmployeeNumber.trim()
+        first_name: firstName,
+        last_name: lastName,
+        member_number: newEmployeeNumber.trim(),
+        status: 'Active',
+        tier: 'Regular'
       });
 
       if (empError) throw empError;
@@ -604,12 +620,25 @@ export default function App() {
         }
 
         // Handle "Last, First" format - convert to "First Last"
+        let firstName, lastName;
         if (name.includes(',')) {
           const parts = name.split(',').map(p => p.trim());
           if (parts.length === 2) {
-            name = `${parts[1]} ${parts[0]}`; // "Smith, John" becomes "John Smith"
+            firstName = parts[1];
+            lastName = parts[0];
+            name = `${firstName} ${lastName}`; // "Smith, John" becomes "John Smith"
             console.log('Converted name to:', name);
+          } else {
+            // Split on last space
+            const nameParts = name.split(' ');
+            firstName = nameParts[0];
+            lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
           }
+        } else {
+          // Split on last space
+          const nameParts = name.split(' ');
+          firstName = nameParts[0];
+          lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
         }
 
         // Check if already exists
@@ -620,13 +649,16 @@ export default function App() {
           continue;
         }
 
-        // Add employee
-        console.log('Adding employee:', { name, number });
+        // Add member to members table
+        console.log('Adding member:', { firstName, lastName, number });
         const newId = Math.floor(Date.now() + Math.random() * 1000);
-        const { error: insertError } = await supabase.from('employees').insert({
+        const { error: insertError } = await supabase.from('members').insert({
           id: newId,
-          name: name,
-          number: number
+          first_name: firstName,
+          last_name: lastName,
+          member_number: number,
+          status: 'Active',
+          tier: 'Regular'
         });
 
         if (insertError) {
