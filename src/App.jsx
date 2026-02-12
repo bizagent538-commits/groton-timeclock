@@ -2428,7 +2428,7 @@ export default function App() {
                   onKeyPress={(e) => {
                     if (e.key === 'Enter' && selectedCommittee && password) {
                       const committee = committees.find(c => c.id === parseInt(selectedCommittee));
-                      if (committee && committee.name.substring(0, 4).toLowerCase() === password.toLowerCase()) {
+                      if (committee && committee.password === password.toLowerCase()) {
                         // Check if special committee (Membership or Work Hours)
                         const specialCommittees = ['membership', 'work hours', 'workhours', 'work-hours'];
                         const isSpecialChair = specialCommittees.some(name => 
@@ -2443,7 +2443,7 @@ export default function App() {
                         setPassword('');
                         setSelectedCommittee('');
                       } else {
-                        alert('Incorrect password. Use first 4 letters of committee name.');
+                        alert('Incorrect password');
                         setPassword('');
                       }
                     }
@@ -2458,7 +2458,7 @@ export default function App() {
                     const committee = committees.find(c => c.id === parseInt(selectedCommittee));
                     if (!committee) return;
                     
-                    if (committee.name.substring(0, 4).toLowerCase() === password.toLowerCase()) {
+                    if (committee.password === password.toLowerCase()) {
                       // Check if special committee (Membership or Work Hours)
                       const specialCommittees = ['membership', 'work hours', 'workhours', 'work-hours'];
                       const isSpecialChair = specialCommittees.some(name => 
@@ -2473,7 +2473,7 @@ export default function App() {
                       setPassword('');
                       setSelectedCommittee('');
                     } else {
-                      alert('Incorrect password. Use first 4 letters of committee name.');
+                      alert('Incorrect password');
                       setPassword('');
                     }
                   }}
