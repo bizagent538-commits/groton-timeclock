@@ -1207,7 +1207,7 @@ export default function App() {
     let entries = timeEntries;
 
     if (isChair && chairCommittee) {
-      entries = entries.filter(e => e.committee_id === chairCommittee.id);
+      entries = entries.filter(e => Number(e.committee_id) === Number(chairCommittee.id));
     }
 
     if (statusFilter !== 'all') {
@@ -1219,7 +1219,7 @@ export default function App() {
 
   const filteredEntries = getFilteredEntries();
   const pendingCount = isChair && chairCommittee
-    ? timeEntries.filter(e => e.committee_id === chairCommittee.id && e.status === 'pending').length
+    ? timeEntries.filter(e => Number(e.committee_id) === Number(chairCommittee.id) && e.status === 'pending').length
     : timeEntries.filter(e => e.status === 'pending').length;
 
   // Time Entry Table Component (shared between Admin and Chair)
