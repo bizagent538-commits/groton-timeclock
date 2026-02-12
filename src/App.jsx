@@ -1189,6 +1189,9 @@ export default function App() {
       setEmployees([]);
       setCommittees([]);
       setTimeEntries([]);
+      setEmail('');
+      setPassword('');
+      setUserProfile(null);
     } catch (error) {
       console.error('Logout error:', error);
     }
