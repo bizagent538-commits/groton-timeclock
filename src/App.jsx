@@ -31,6 +31,9 @@ export default function App() {
   // Committee management state
   const [newCommitteeName, setNewCommitteeName] = useState('');
   const [newCommitteeChair, setNewCommitteeChair] = useState('');
+  const [editingCommittee, setEditingCommittee] = useState(null);
+  const [editCommitteeName, setEditCommitteeName] = useState('');
+  const [editCommitteeChair, setEditCommitteeChair] = useState('');
 
   // Volunteer clock in/out state
   const [loginInput, setLoginInput] = useState('');
@@ -357,7 +360,7 @@ export default function App() {
       const { error } = await supabase.from('committees').insert({
         name: newCommitteeName.trim(),
         chair: newCommitteeChair.trim(),
-        password: ''
+        password: newCommitteeName.trim().substring(0, 4).toLowerCase()
       });
 
       if (error) throw error;
@@ -379,6 +382,40 @@ export default function App() {
       if (error) throw error;
       loadData();
       alert('✅ Committee deleted!');
+    } catch (error) {
+      alert(`Error: ${error.message}`);
+    }
+  };
+
+  const startEditCommittee = (committee) => {
+    setEditingCommittee(committee.id);
+    setEditCommitteeName(committee.name);
+    setEditCommitteeChair(committee.chair);
+  };
+
+  const cancelEditCommittee = () => {
+    setEditingCommittee(null);
+    setEditCommitteeName('');
+    setEditCommitteeChair('');
+  };
+
+  const updateCommittee = async (id) => {
+    if (!editCommitteeName.trim() || !editCommitteeChair.trim()) {
+      alert('Please fill in all fields');
+      return;
+    }
+
+    try {
+      const { error } = await supabase.from('committees').update({
+        name: editCommitteeName.trim(),
+        chair: editCommitteeChair.trim(),
+        password: editCommitteeName.trim().substring(0, 4).toLowerCase()
+      }).eq('id', id);
+
+      if (error) throw error;
+      loadData();
+      cancelEditCommittee();
+      alert('✅ Committee updated!');
     } catch (error) {
       alert(`Error: ${error.message}`);
     }
@@ -1719,17 +1756,69 @@ export default function App() {
                       <tbody>
                         {committees.map((com, idx) => (
                           <tr key={com.id} className={`border-t hover:bg-gray-50 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
-                            <td className="p-4 font-semibold">{com.name}</td>
-                            <td className="p-4">{com.chair}</td>
-                            <td className="p-4">
-                              <button
-                                onClick={() => deleteCommittee(com.id)}
-                                className="flex items-center gap-2 px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200"
-                              >
-                                <Trash2 size={16} />
-                                Delete
-                              </button>
-                            </td>
+                            {editingCommittee === com.id ? (
+                              <>
+                                <td className="p-4">
+                                  <input
+                                    type="text"
+                                    value={editCommitteeName}
+                                    onChange={(e) => setEditCommitteeName(e.target.value)}
+                                    className="w-full p-2 border rounded"
+                                    placeholder="Committee Name"
+                                  />
+                                </td>
+                                <td className="p-4">
+                                  <input
+                                    type="text"
+                                    value={editCommitteeChair}
+                                    onChange={(e) => setEditCommitteeChair(e.target.value)}
+                                    className="w-full p-2 border rounded"
+                                    placeholder="Chair Name"
+                                  />
+                                </td>
+                                <td className="p-4">
+                                  <div className="flex gap-2">
+                                    <button
+                                      onClick={() => updateCommittee(com.id)}
+                                      className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                                    >
+                                      <CheckCircle size={16} />
+                                      Save
+                                    </button>
+                                    <button
+                                      onClick={cancelEditCommittee}
+                                      className="flex items-center gap-2 px-3 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+                                    >
+                                      <X size={16} />
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </td>
+                              </>
+                            ) : (
+                              <>
+                                <td className="p-4 font-semibold">{com.name}</td>
+                                <td className="p-4">{com.chair}</td>
+                                <td className="p-4">
+                                  <div className="flex gap-2">
+                                    <button
+                                      onClick={() => startEditCommittee(com)}
+                                      className="flex items-center gap-2 px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200"
+                                    >
+                                      <Edit2 size={16} />
+                                      Edit
+                                    </button>
+                                    <button
+                                      onClick={() => deleteCommittee(com.id)}
+                                      className="flex items-center gap-2 px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200"
+                                    >
+                                      <Trash2 size={16} />
+                                      Delete
+                                    </button>
+                                  </div>
+                                </td>
+                              </>
+                            )}
                           </tr>
                         ))}
                       </tbody>
